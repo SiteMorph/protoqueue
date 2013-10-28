@@ -36,6 +36,8 @@ import java.util.concurrent.Future;
  *
  * Tasks will be executed as soon after their timestamp as possible but future
  * tasks will not be executed until they are overdue.
+ *
+ * Note: Use at your own risk.
  */
 
 // TODO 20131008 Implement critical section around queue updates

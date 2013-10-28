@@ -40,13 +40,13 @@ public interface TaskQueue {
   /**
    * Remove a task from the queue.
    *
-   * @param task
+   * @param task to remove from the queue
    */
   public void remove(Task task) throws QueueException;
 
   /**
    * Internal method for queue inspection operations returning the entire queue.
-   * @return
+   * @return all tasks
    */
   CrudIterator<Task> tasks() throws QueueException;
 }

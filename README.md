@@ -12,3 +12,6 @@ compilation.
 Note that you must have protobuf compiler installed.
 
 See unit tests for usage.
+
+Note that logging is via slf4j. Please use your relevant adapter if you 
+require logging.

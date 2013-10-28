@@ -155,9 +155,9 @@ public class TaskDispatcher implements Runnable {
   }
 
   /**
-   * The reschedule method is a conveniece method that schedules a task but
+   * The reschedule method is a convenience method that schedules a task but
    * doesn't take into account if the task is already scheduled twice.
-   * The reschedule semantics are fuzzy as the current task is actually delted
+   * The reschedule semantics are fuzzy as the current task is actually deleted
    * only when all registered listeners have completed. Hence this feature
    * becomes fuzzy as it requires the user to put themselves into an error
    * state to avoid task deletion.

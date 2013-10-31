@@ -1,6 +1,5 @@
 package net.sitemorph.queue;
 
-import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.queue.Message.Task;
 
@@ -51,5 +50,5 @@ public interface TaskQueue {
    */
   CrudIterator<Task> tasks() throws QueueException;
 
-  public void close() throws QueueException, CrudException;
+  public void close() throws QueueException;
 }

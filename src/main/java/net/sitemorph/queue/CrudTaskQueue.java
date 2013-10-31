@@ -98,11 +98,11 @@ public class CrudTaskQueue implements TaskQueue {
   }
 
   @Override
-  public void close() throws QueueException, CrudException {
+  public void close() throws QueueException {
     try {
       taskStore.close();
     } catch (CrudException e) {
-      throw new CrudException("Error closing task queue", e);
+      throw new QueueException("Error closing task queue", e);
     }
   }
 

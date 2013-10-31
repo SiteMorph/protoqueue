@@ -48,7 +48,7 @@ public class TaskDispatcher implements Runnable {
   private Logger log = LoggerFactory.getLogger(getClass());
   private ExecutorService executorService;
   private volatile boolean run = true;
-  private long sleep;
+  private long sleep = TASK_AWAIT_SLEEP;
   private TaskQueueFactory taskQueueFactory;
   private final List<TaskWorker> workers;
   private long taskTimeout = ONE_DAY;

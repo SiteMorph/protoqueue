@@ -1,5 +1,7 @@
 package net.sitemorph.queue;
 
+import static org.joda.time.DateTime.now;
+
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.protostore.CrudStore;
@@ -11,11 +13,10 @@ import org.joda.time.DateTimeZone;
 
 import java.sql.Connection;
 
-import static org.joda.time.DateTime.now;
-
 /**
  * The task queue builder constructs a task queue from a set of configuration
- * including a crud store. This class is simply a wrapper for a
+ * including a crud store. This class is simply a wrapper for a crud store with
+ * convenience builder which only requires a connection and table name.
  *
  * @author damien@sitemorph.net
  */
@@ -32,6 +33,9 @@ public class CrudTaskQueue implements TaskQueue {
     return new Builder();
   }
 
+  /**
+   * @see TaskQueue#peek()
+   */
   @Override
   public Task peek() throws QueueException {
     try {
@@ -49,6 +53,9 @@ public class CrudTaskQueue implements TaskQueue {
     }
   }
 
+  /**
+   * @see TaskQueue#pop()
+   */
   @Override
   public Task pop() throws QueueException {
     try {
@@ -67,6 +74,9 @@ public class CrudTaskQueue implements TaskQueue {
     }
   }
 
+  /**
+   * @see TaskQueue#push(Task.Builder)
+   */
   @Override
   public Task push(Task.Builder task) throws QueueException {
     try {
@@ -79,6 +89,9 @@ public class CrudTaskQueue implements TaskQueue {
     }
   }
 
+  /**
+   * @see TaskQueue#remove(Task)
+   */
   @Override
   public void remove(Task task) throws QueueException {
     try {
@@ -88,6 +101,9 @@ public class CrudTaskQueue implements TaskQueue {
     }
   }
 
+  /**
+   * @see TaskQueue#tasks()
+   */
   @Override
   public CrudIterator<Task> tasks() throws QueueException {
     try {
@@ -97,6 +113,9 @@ public class CrudTaskQueue implements TaskQueue {
     }
   }
 
+  /**
+   * @see TaskQueue#close()
+   */
   @Override
   public void close() throws QueueException {
     try {
@@ -106,6 +125,9 @@ public class CrudTaskQueue implements TaskQueue {
     }
   }
 
+  /**
+   * Build a crud task queue using concrete urn field store implementation.
+   */
   public static class Builder {
 
     private Builder() {
@@ -114,16 +136,32 @@ public class CrudTaskQueue implements TaskQueue {
 
     private DbUrnFieldStore.Builder<Task> taskStore;
 
+    /**
+     * Set the name of the store table.
+     *
+     * @param tableName of the underlying table.
+     * @return builder
+     */
     public Builder setTableName(String tableName) {
       taskStore.setTableName(tableName);
       return this;
     }
 
+    /**
+     * Set the underlying SQL connector
+     * @param connection to use to access the queue
+     * @return builder
+     */
     public Builder setConnection(Connection connection) {
       taskStore.setConnection(connection);
       return this;
     }
 
+    /**
+     * construct teh task queue.
+     * @return the task queue
+     * @throws QueueException on connector error or table and field name error
+     */
     public CrudTaskQueue build() throws QueueException {
       try {
         taskStore

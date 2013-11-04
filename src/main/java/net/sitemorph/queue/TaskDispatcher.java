@@ -43,12 +43,12 @@ import java.util.concurrent.Future;
 // TODO 20131008 Implement critical section around queue updates
 public class TaskDispatcher implements Runnable {
 
-  private static final long TASK_AWAIT_SLEEP = 1000;
+  private static final long TASK_TIMEOUT_PERIOD = 1000;
   private static final long ONE_DAY = 24 * 60 * 60000;
   private Logger log = LoggerFactory.getLogger(getClass());
   private ExecutorService executorService;
   private volatile boolean run = true;
-  private long sleep = TASK_AWAIT_SLEEP;
+  private long sleep = TASK_TIMEOUT_PERIOD;
   private TaskQueueFactory taskQueueFactory;
   private final List<TaskWorker> workers;
   private long taskTimeout = ONE_DAY;
@@ -102,7 +102,7 @@ public class TaskDispatcher implements Runnable {
           try {
             log.debug("TaskDispatcher waiting for tasks to complete");
             synchronized (this) {
-              wait(TASK_AWAIT_SLEEP);
+              wait(TASK_TIMEOUT_PERIOD);
             }
           } catch(InterruptedException e) {
             log.info("TaskDispatcher interrupted waiting for tasks " +
@@ -126,7 +126,7 @@ public class TaskDispatcher implements Runnable {
           taskQueueFactory.returnTaskQueue(queue);
           synchronized (this) {
             log.debug("TaskDispatcher waiting after error to prevent overload");
-            wait(TASK_AWAIT_SLEEP);
+            wait(TASK_TIMEOUT_PERIOD);
           }
         }
       } catch (Throwable t) {
@@ -148,7 +148,12 @@ public class TaskDispatcher implements Runnable {
     }
   }
 
-  public void unregister(TaskWorker worker) {
+  /**
+   * Remove a task listener from the registered listeners.
+   *
+   * @param worker listener
+   */
+  public void deregister(TaskWorker worker) {
     synchronized (workers) {
       workers.remove(worker);
     }
@@ -331,31 +336,66 @@ public class TaskDispatcher implements Runnable {
 
     private TaskDispatcher dispatcher;
 
+    /**
+     * Set the size of the fixed worker pool. Recommend at least two.
+     *
+     * @param poolSize for a fixed worker pool.
+     * @return builder
+     */
     public Builder setWorkerPoolSize(int poolSize) {
       dispatcher.executorService = Executors.newFixedThreadPool(poolSize);
       return this;
     }
 
+    /**
+     * Set how long the dispatcher sleeps while awaiting tasks. Note that this
+     * sets an uppper bound on task start 'lateness'.
+     * @param sleep milliseconds.
+     * @return builder
+     */
     public Builder setSleepInterval(long sleep) {
       dispatcher.sleep = sleep;
       return this;
     }
 
+    /**
+     * Factory that is use dto create queue storage drivers by the task manager
+     * and task running instances.
+     * @param factory for task queues.
+     * @return builder
+     */
     public Builder setTaskQueueFactory(TaskQueueFactory factory) {
       dispatcher.taskQueueFactory = factory;
       return this;
     }
 
+    /**
+     * Register a task worker as a task event listener. The task can then decide
+     * if it needs to perform work for events in the task queue.
+     *
+     * @param taskWorker which will listen.
+     * @return builder
+     */
     public Builder registerTaskWorker(TaskWorker taskWorker) {
       dispatcher.workers.add(taskWorker);
       return this;
     }
 
+    /**
+     * The dispatcher will time tasks out if they don't complete within this
+     * time frame.
+     * @param timeout in milliseconds.
+     * @return builder
+     */
     public Builder setTaskTimeout(long timeout) {
       dispatcher.taskTimeout = timeout;
       return this;
     }
 
+    /**
+     * Build the dispatcher.
+     * @return dispatcher.
+     */
     public TaskDispatcher build() {
       return dispatcher;
     }

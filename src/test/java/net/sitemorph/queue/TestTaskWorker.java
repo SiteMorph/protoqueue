@@ -71,7 +71,7 @@ public class TestTaskWorker implements TaskWorker {
       dispatcher.shutdown();
     }
     if (hasUndone) {
-      dispatcher.unregister(this);
+      dispatcher.deregister(this);
     }
   }
 

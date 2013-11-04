@@ -50,5 +50,9 @@ public interface TaskQueue {
    */
   CrudIterator<Task> tasks() throws QueueException;
 
+  /**
+   * Called to close the task queue and release it's resources.
+   * @throws QueueException
+   */
   public void close() throws QueueException;
 }

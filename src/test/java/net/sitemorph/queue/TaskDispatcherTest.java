@@ -24,7 +24,7 @@ public class TaskDispatcherTest {
   private Logger log = LoggerFactory.getLogger("TaskDispatcherTest");
 
   TaskDispatcher getDispatcher(final ListTaskQueue taskList,
-      List<TestTaskWorker> workers) {
+      List<TaskWorker> workers) {
     TaskDispatcher.Builder builder = TaskDispatcher.newBuilder();
     builder.setSleepInterval(1000)
         .setTaskTimeout(10000)
@@ -58,8 +58,9 @@ public class TaskDispatcherTest {
 
   @Test(groups = "slowTest")
   public void testTasksRun() throws InterruptedException, QueueException {
+    log.debug("TEST TASK RUN SHUTDOWN STARTING");
     ListTaskQueue singleTask = getSingleTask();
-    List<TestTaskWorker> workers = Lists.newArrayList();
+    List<TaskWorker> workers = Lists.newArrayList();
     TestTaskWorker worker = new TestTaskWorker();
     workers.add(worker);
 
@@ -72,17 +73,43 @@ public class TaskDispatcherTest {
     Thread.sleep(1500);
 
     assertTrue(worker.hasRun(), "Worker was not run");
-    assertNull(singleTask.peek(), "Task list should be empty");
-    log.debug("TEST TASK RUN DONE");
+    assertNotNull(singleTask.peek(), "Task list should still have the task " +
+        "as the scheduler was shutdown before the run was complete");
+    log.debug("TEST TASK RUN SHUTDOWN DONE");
   }
+
+  @Test(groups = "slowTest")
+  public void testTaskRunComplete()
+      throws InterruptedException, QueueException {
+    log.debug("TEST TASK RUN SUCCESSFUL STARTING");
+    ListTaskQueue singleTask = getSingleTask();
+    List<TaskWorker> workers = Lists.newArrayList();
+    NullTaskWorker worker = new NullTaskWorker();
+    workers.add(worker);
+
+    TaskDispatcher dispatcher = getDispatcher(singleTask, workers);
+    // don't set the shudown dispatcher, just let it run
+    Thread thread = new Thread(dispatcher);
+    thread.start();
+
+    Thread.sleep(2500);
+
+    assertTrue(worker.getStatus() == TaskStatus.DONE,
+        "Worker should have been run");
+    assertNull(singleTask.peek(), "Task queue should be empty after success");
+    dispatcher.shutdown();
+    log.debug("TEST TASK RUN SUCCESSFUL DONE");
+
+  }
+
 
   @Test(groups = "slowTest")
   public void testTwoTaskOneFailNoRun() throws QueueException, InterruptedException {
     ListTaskQueue singleTask = getSingleTask();
-    List<TestTaskWorker> workers = Lists.newArrayList();
+    List<TaskWorker> workers = Lists.newArrayList();
     workers.add(new TestTaskWorker());
     workers.add(new TestTaskWorker());
-    workers.get(0).setOverrideStatus(TaskStatus.STOPPED);
+    ((TestTaskWorker) workers.get(0)).setOverrideStatus(TaskStatus.STOPPED);
 
     TaskDispatcher dispatcher = getDispatcher(singleTask, workers);
 
@@ -95,8 +122,8 @@ public class TaskDispatcherTest {
     dispatcher.shutdown();
     log.debug("Test shutdown complete");
 
-    assertTrue(workers.get(0).hasRun(), "Worker 0 was not run");
-    assertTrue(workers.get(1).hasRun(), "Worker 1 was not run");
+    assertTrue(((TestTaskWorker) workers.get(0)).hasRun(), "Worker 0 was not run");
+    assertTrue(((TestTaskWorker) workers.get(1)).hasRun(), "Worker 1 was not run");
     assertNotNull(singleTask.peek(), "Queue should not have been emptied");
   }
 
@@ -113,7 +140,7 @@ public class TaskDispatcherTest {
         .build());
     ListTaskQueue singleTask = new ListTaskQueue(taskList);
 
-    List<TestTaskWorker> workers = Lists.newArrayList();
+    List<TaskWorker> workers = Lists.newArrayList();
     workers.add(new TestTaskWorker());
 
     TaskDispatcher dispatcher = getDispatcher(singleTask, workers);
@@ -127,7 +154,8 @@ public class TaskDispatcherTest {
     dispatcher.shutdown();
     log.debug("Test shutdown complete");
 
-    assertFalse(workers.get(0).hasRun(), "Worker 0 was not run");
+    assertFalse(((TestTaskWorker) workers.get(0)).hasRun(),
+        "Worker 0 was not run");
     assertNotNull(singleTask.peek(), "Queue should not have been emptied");
   }
 

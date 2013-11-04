@@ -45,6 +45,7 @@ public class TaskDispatcher implements Runnable {
 
   private static final long TASK_TIMEOUT_PERIOD = 1000;
   private static final long ONE_DAY = 24 * 60 * 60000;
+  private static final long SHUTDOWN_GRACE_PERIOD = 1000;
   private Logger log = LoggerFactory.getLogger(getClass());
   private ExecutorService executorService;
   private volatile boolean run = true;
@@ -123,6 +124,10 @@ public class TaskDispatcher implements Runnable {
             log.info("TaskDispatcher interrupted waiting for tasks " +
                 "to complete");
           }
+          if (!run) {
+            // have been shut down
+            break;
+          }
           if (timeoutTask(start)) {
             log.debug("TaskDispatcher Task timeout reached. Cancelling.");
             cancelTasks(futures);
@@ -130,7 +135,7 @@ public class TaskDispatcher implements Runnable {
         }
 
         // if all done check status
-        if (successful(running)) {
+        if (run && successful(running)) {
           log.debug("TaskDispatcher Task Set Successful. De-queueing Task {}",
               task.getUrn());
           queue.remove(task);
@@ -170,7 +175,7 @@ public class TaskDispatcher implements Runnable {
    * @param worker listener
    */
   public void deregister(TaskWorker worker) {
-    synchronized (workers) {
+    synchronized (this) {
       workers.remove(worker);
     }
   }
@@ -312,11 +317,20 @@ public class TaskDispatcher implements Runnable {
 
   public void shutdown() {
     log.debug("TaskDispatcher Shutting Down");
-    run = false;
-    executorService.shutdown();
     synchronized (this) {
+      // notify in case task dispatcher has 'cleanup' left to do for completed
+      // tasks
       notify();
     }
+    try {
+      Thread.sleep(SHUTDOWN_GRACE_PERIOD);
+    } catch (InterruptedException e) {
+      log.error("Task dispatcher shutdown grace period interrupted");
+    }
+
+    run = false;
+    executorService.shutdown();
+
   }
 
   /**

@@ -2,6 +2,9 @@ package net.sitemorph.queue;
 
 import net.sitemorph.queue.Message.Task;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Test worker which just instruments all sorts of issues and nightmares.
  *
@@ -9,6 +12,7 @@ import net.sitemorph.queue.Message.Task;
  */
 public class TestTaskWorker implements TaskWorker {
 
+  private Logger log = LoggerFactory.getLogger(getClass());
   private boolean isReset = false;
   private Task task = null;
   private boolean isStopped = false;
@@ -68,10 +72,11 @@ public class TestTaskWorker implements TaskWorker {
   public void run() {
     hasRun = true;
     if (null != dispatcher) {
+      log.debug("Test Task Worker shutting dispatcher down");
       dispatcher.shutdown();
     }
     if (hasUndone) {
-      dispatcher.deregister(this);
+      //dispatcher.deregister(this);
     }
   }
 

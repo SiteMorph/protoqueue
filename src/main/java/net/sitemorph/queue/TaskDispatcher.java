@@ -59,19 +59,22 @@ public class TaskDispatcher implements Runnable {
 
   @Override
   public void run() {
+
+    // fire startup events
+    for (TaskWorker worker : workers) {
+      if (worker instanceof DispatcherStartupListener) {
+        try {
+          ((DispatcherStartupListener) worker).dispatcherStarted(this);
+        } catch (QueueException e) {
+          log.error("Error calling startup method on task worker {}",
+              worker.getClass().getName(), e);
+        }
+      }
+    }
+
     while (run) {
 
       log.debug("TaskDispatcher Starting Run");
-      for (TaskWorker worker : workers) {
-        if (worker instanceof DispatcherStartupListener) {
-          try {
-            ((DispatcherStartupListener) worker).dispatcherStarted(this);
-          } catch (QueueException e) {
-            log.error("Error calling startup method on task worker {}",
-                worker.getClass().getName(), e);
-          }
-        }
-      }
 
       TaskQueue queue = null;
       try {
@@ -96,8 +99,10 @@ public class TaskDispatcher implements Runnable {
         List<Future> futures = Lists.newArrayList();
         List<TaskWorker> running = Lists.newArrayList();
         long start = System.currentTimeMillis();
-        synchronized (workers) {
+        synchronized (this) {
           for (TaskWorker worker : workers) {
+            log.debug("Considering worker {} for task {}", worker.getClass(),
+                task.getUrn());
             if (worker.isRelevant(task)) {
               worker.reset();
               worker.setTask(task, this);
@@ -389,8 +394,18 @@ public class TaskDispatcher implements Runnable {
     /**
      * Build the dispatcher.
      * @return dispatcher.
+     * @throws IllegalStateException if the worker pool size isn't set or the
+     *    task queue factory has not been set
      */
     public TaskDispatcher build() {
+      if (null == dispatcher.executorService) {
+        throw new IllegalStateException("Could not build task dispatcher " +
+            "as the executor pool size was not set");
+      }
+      if (null == dispatcher.taskQueueFactory) {
+        throw new IllegalStateException("Could not build task dispatcher " +
+            "as the task queue factory has not been set");
+      }
       return dispatcher;
     }
   }

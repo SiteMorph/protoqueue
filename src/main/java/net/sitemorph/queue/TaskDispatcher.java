@@ -174,7 +174,7 @@ public class TaskDispatcher implements Runnable {
   }
 
   public boolean isTaskScheduled(String path)
-      throws QueueException, CrudException {
+      throws QueueException {
     // run over the task queue and ensure that there is a task for this event
     // scheduled
     boolean scheduled = false;
@@ -199,7 +199,8 @@ public class TaskDispatcher implements Runnable {
     } catch (CrudException e) {
       taskQueueFactory.returnTaskQueue(queue);
       log.error("Crud exception trying to look for new tasks", e);
-      throw e;
+      throw new QueueException("Storage error checking for task scheduled " +
+          "status", e);
     }
     return scheduled;
   }
@@ -211,7 +212,7 @@ public class TaskDispatcher implements Runnable {
    * @return true if found for the interval provided
    */
   public boolean isTaskScheduled(String path, Interval interval)
-      throws QueueException, CrudException {
+      throws QueueException {
     boolean scheduled = false;
     TaskQueue queue = null;
     try {
@@ -236,7 +237,7 @@ public class TaskDispatcher implements Runnable {
       taskQueueFactory.returnTaskQueue(queue);
       log.error("Error checking for presence of {} with interval {}",
           path, interval, e);
-      throw e;
+      throw new QueueException("Error accessing queue storage", e);
     }
     return scheduled;
   }

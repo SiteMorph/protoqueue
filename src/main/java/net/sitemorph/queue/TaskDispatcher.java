@@ -62,6 +62,16 @@ public class TaskDispatcher implements Runnable {
     while (run) {
 
       log.debug("TaskDispatcher Starting Run");
+      for (TaskWorker worker : workers) {
+        if (worker instanceof DispatcherStartupListener) {
+          try {
+            ((DispatcherStartupListener) worker).dispatcherStarted(this);
+          } catch (QueueException e) {
+            log.error("Error calling startup method on task worker {}",
+                worker.getClass().getName(), e);
+          }
+        }
+      }
 
       TaskQueue queue = null;
       try {

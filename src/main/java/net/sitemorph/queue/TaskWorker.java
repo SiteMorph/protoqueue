@@ -21,23 +21,47 @@ import net.sitemorph.queue.Message.Task;
  * Note that if the same task worker instance is registered multiple times it
  * could be called concurrently so it is up to the implementer to resolve.
  *
- * In extreme circumstances a task can deregister it's self from the task
+ * In extreme circumstances a task can de-register it's self from the task
  * listeners when it is apparent that a task will not complete due to it's
  * participation in the task.
  */
 public interface TaskWorker extends Runnable {
 
+  /**
+   * Reset a task before handling a new task job run.
+   */
   public void reset();
 
+  /**
+   * Return true if the worker wants to be included in the set of workers for
+   * the given task.
+   *
+   * @param task scope
+   * @return true if wish to be included.
+   */
   public boolean isRelevant(Task task);
 
+  /**
+   * If a task is relevant, it will be set, as well as the dispatcher.
+   * @param task scope of the next call to run
+   * @param dispatcher context.
+   */
   public void setTask(Task task, TaskDispatcher dispatcher);
 
-  // run
-
+  /**
+   * Get the current executing status of a task.
+   * @return task status state.
+   */
   public TaskStatus getStatus();
 
+  /**
+   * Stop a task, called on shutdown and timeout.
+   */
   public void stop();
 
+  /**
+   * Undo or clean up a tasks work after one of the set of task workers didn't
+   * complete for a task. This is a best effort cleanup.
+   */
   public void undo();
 }

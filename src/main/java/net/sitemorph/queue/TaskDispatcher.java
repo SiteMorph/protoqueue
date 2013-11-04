@@ -24,20 +24,20 @@ import java.util.concurrent.Future;
  * data passed as state.
  *
  * The semantics of the task dispatcher are that it will try to execute tasks
- * using the registered tasks and will keep retrying until success at which
+ * using the registered tasks and will keep retrying until success, at which
  * point the task is removed from the queue.
  *
  * If multiple task executors are registered for a path then all must complete.
  * If one of the tasks fails to complete then all tasks will be called to undo
  * their work. In the normal case with only a single task executor it will just
- * run but if another fails undo will be called.
+ * run but if another fails undo will be called. Undo is intended for situations
+ * where it would be good to clean up rather than leave work in an inconsistent
+ * state. As such it is a best effort feature.
  *
  * The task path is used as a uri to register task dispatchers.
  *
  * Tasks will be executed as soon after their timestamp as possible but future
  * tasks will not be executed until they are overdue.
- *
- * Note: Use at your own risk.
  */
 
 // TODO 20131008 Implement critical section around queue updates
@@ -102,7 +102,7 @@ public class TaskDispatcher implements Runnable {
           try {
             log.debug("TaskDispatcher waiting for tasks to complete");
             synchronized (this) {
-              wait(TASK_TIMEOUT_PERIOD);
+              wait(sleep);
             }
           } catch(InterruptedException e) {
             log.info("TaskDispatcher interrupted waiting for tasks " +
@@ -125,16 +125,17 @@ public class TaskDispatcher implements Runnable {
           undo(running);
           taskQueueFactory.returnTaskQueue(queue);
           synchronized (this) {
-            log.debug("TaskDispatcher waiting after error to prevent overload");
-            wait(TASK_TIMEOUT_PERIOD);
+            log.debug("TaskDispatcher waiting after error to prevent " +
+                "immediate rerun of failed tasks");
+            wait(sleep);
           }
         }
       } catch (Throwable t) {
-        log.error("Task Dispatcher Encountered Unhandled Error", t);
+        log.error("Task dispatcher encountered unhandled error", t);
         try {
           taskQueueFactory.returnTaskQueue(queue);
         } catch (QueueException e) {
-          log.error("Queue error releasing task que in task dispatcher");
+          log.error("Queue error releasing task queue in task dispatcher");
         }
         log.info("Task dispatcher sleeping to await system recovery");
         try {
@@ -157,28 +158,6 @@ public class TaskDispatcher implements Runnable {
     synchronized (workers) {
       workers.remove(worker);
     }
-  }
-
-  /**
-   * The reschedule method is a convenience method that schedules a task but
-   * doesn't take into account if the task is already scheduled twice.
-   * The reschedule semantics are fuzzy as the current task is actually deleted
-   * only when all registered listeners have completed. Hence this feature
-   * becomes fuzzy as it requires the user to put themselves into an error
-   * state to avoid task deletion.
-   *
-   * Given that, advise queueing a new task using the old as a prototype.
-   *
-   * @param update to insert.
-   * @return the new task item.
-   * @throws QueueException
-   */
-  @Deprecated
-  public Task reschedule(Task.Builder update) throws QueueException {
-    TaskQueue queue = taskQueueFactory.getTaskQueue();
-    Task result = queue.push(update);
-    taskQueueFactory.returnTaskQueue(queue);
-    return result;
   }
 
   public Task schedule(Task.Builder update) throws QueueException {
@@ -324,6 +303,10 @@ public class TaskDispatcher implements Runnable {
     }
   }
 
+  /**
+   * Get a new builder.
+   * @return a new builder instance used to construct a task dispatcher.
+   */
   public static Builder newBuilder() {
     return new Builder();
   }
@@ -349,7 +332,7 @@ public class TaskDispatcher implements Runnable {
 
     /**
      * Set how long the dispatcher sleeps while awaiting tasks. Note that this
-     * sets an uppper bound on task start 'lateness'.
+     * sets an upper bound on task start 'lateness'.
      * @param sleep milliseconds.
      * @return builder
      */

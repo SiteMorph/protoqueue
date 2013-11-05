@@ -79,6 +79,7 @@ public class TaskDispatcher implements Runnable {
 
       TaskQueue queue = null;
       try {
+
         queue = taskQueueFactory.getTaskQueue();
 
         Task task = queue.peek();

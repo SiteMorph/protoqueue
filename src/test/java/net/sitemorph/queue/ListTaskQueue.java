@@ -69,4 +69,9 @@ public class ListTaskQueue implements TaskQueue {
       public void close() throws CrudException {}
     };
   }
+
+  @Override
+  public void close() throws QueueException {
+    taskList.clear();
+  }
 }

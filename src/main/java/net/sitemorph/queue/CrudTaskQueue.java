@@ -12,6 +12,7 @@ import net.sitemorph.queue.Message.Task;
 import org.joda.time.DateTimeZone;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 
 /**
  * The task queue builder constructs a task queue from a set of configuration
@@ -23,10 +24,11 @@ import java.sql.Connection;
 public class CrudTaskQueue implements TaskQueue {
 
   private CrudStore<Task> taskStore;
+  private Connection connection;
 
-
-  public CrudTaskQueue(CrudStore<Task> taskStore) {
+  private CrudTaskQueue(CrudStore<Task> taskStore, Connection connection) {
     this.taskStore = taskStore;
+    this.connection = connection;
   }
 
   public static Builder newBuilder() {
@@ -123,12 +125,22 @@ public class CrudTaskQueue implements TaskQueue {
     } catch (CrudException e) {
       throw new QueueException("Error closing task queue", e);
     }
+    // also close the underlying connection if it is open.
+    try {
+      if (!connection.isClosed()) {
+        connection.close();
+      }
+    } catch (SQLException e) {
+      throw new QueueException("Error closing SQL connection", e);
+    }
   }
 
   /**
    * Build a crud task queue using concrete urn field store implementation.
    */
   public static class Builder {
+
+    private Connection connection;
 
     private Builder() {
       taskStore = new DbUrnFieldStore.Builder<Task>();
@@ -154,6 +166,7 @@ public class CrudTaskQueue implements TaskQueue {
      */
     public Builder setConnection(Connection connection) {
       taskStore.setConnection(connection);
+      this.connection = connection;
       return this;
     }
 
@@ -170,7 +183,7 @@ public class CrudTaskQueue implements TaskQueue {
             .addIndexField("path")
             .setSortOrder("runTime", SortOrder.ASCENDING);
         CrudStore<Task> store = taskStore.build();
-        return new CrudTaskQueue(store);
+        return new CrudTaskQueue(store, connection);
       } catch (CrudException e) {
         throw new QueueException("Error initialising queue", e);
       }

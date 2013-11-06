@@ -16,7 +16,8 @@ Code is laid out in standard maven directory structure. The SQL in src/main
 provides a template for a task queue table used to store the crud task queue
 data.
 
-Note that this project is in the initial phases and has only had limited test.
+Note that this project is in the initial phases and should be considered
+experimental.
 
 Note that this project uses linux specific protoc commands for protobuf 
 compilation. 

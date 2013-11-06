@@ -34,6 +34,9 @@ import java.util.concurrent.Future;
  * where it would be good to clean up rather than leave work in an inconsistent
  * state. As such it is a best effort feature.
  *
+ * If no task worker is registered or collaborates in the processing of an
+ * event it will be considered 'complete' and removed from the queue.
+ *
  * The task path is used as a uri to register task dispatchers.
  *
  * Tasks will be executed as soon after their timestamp as possible but future

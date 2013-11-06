@@ -4,6 +4,9 @@ protoqueue
 A very simple queueing library which uses the SiteMorph/protostore backing to
 support prefix matched queue events and scheduling time.
 
+The proto queue depends on the protostore project. Before you can build the
+queue you must first clone protostore and run mvn intall.
+
 To use the code perform a local install by running the maven install target:
 
 mvn install

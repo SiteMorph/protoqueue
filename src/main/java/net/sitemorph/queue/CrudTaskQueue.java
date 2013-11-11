@@ -1,7 +1,5 @@
 package net.sitemorph.queue;
 
-import static org.joda.time.DateTime.now;
-
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.protostore.CrudStore;
@@ -13,6 +11,8 @@ import org.joda.time.DateTimeZone;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+
+import static org.joda.time.DateTime.now;
 
 /**
  * The task queue builder constructs a task queue from a set of configuration
@@ -29,6 +29,14 @@ public class CrudTaskQueue implements TaskQueue {
   private CrudTaskQueue(CrudStore<Task> taskStore, Connection connection) {
     this.taskStore = taskStore;
     this.connection = connection;
+  }
+
+  private CrudTaskQueue(CrudStore<Task> taskStore) {
+    this.taskStore = taskStore;
+  }
+
+  public static CrudTaskQueue fromCrudStore(CrudStore<Task> taskStore) {
+    return new CrudTaskQueue(taskStore);
   }
 
   public static Builder newBuilder() {
@@ -127,7 +135,7 @@ public class CrudTaskQueue implements TaskQueue {
     }
     // also close the underlying connection if it is open.
     try {
-      if (!connection.isClosed()) {
+      if (null != connection && !connection.isClosed()) {
         connection.close();
       }
     } catch (SQLException e) {

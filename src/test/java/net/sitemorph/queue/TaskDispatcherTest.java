@@ -1,5 +1,8 @@
 package net.sitemorph.queue;
 
+import net.sitemorph.protostore.CrudStore;
+import net.sitemorph.protostore.InMemoryStore;
+import net.sitemorph.protostore.SortOrder;
 import net.sitemorph.queue.Message.Task;
 
 import com.beust.jcommander.internal.Lists;
@@ -23,16 +26,28 @@ public class TaskDispatcherTest {
 
   private Logger log = LoggerFactory.getLogger("TaskDispatcherTest");
 
-  TaskDispatcher getDispatcher(final ListTaskQueue taskList,
-      List<TaskWorker> workers) {
+  TaskDispatcher getDispatcher(ListTaskQueue tasks, List<TaskWorker> workers)
+      throws QueueException {
     TaskDispatcher.Builder builder = TaskDispatcher.newBuilder();
+    CrudStore<Task> taskStore = new InMemoryStore.Builder<Task>()
+        .setPrototype(Task.newBuilder())
+        .setUrnField("urn")
+        .addIndexField("runTime")
+        .addIndexField("path")
+        .setSortOrder("runTime", SortOrder.ASCENDING)
+        .build();
+    final CrudTaskQueue queue = CrudTaskQueue.fromCrudStore(taskStore);
+    while (null != tasks.peek()) {
+      queue.push(tasks.pop().toBuilder());
+    }
+
     builder.setSleepInterval(1000)
         .setTaskTimeout(10000)
         .setWorkerPoolSize(1)
         .setTaskQueueFactory(new TaskQueueFactory() {
           @Override
           public TaskQueue getTaskQueue() {
-            return taskList;
+            return queue;
           }
 
           @Override

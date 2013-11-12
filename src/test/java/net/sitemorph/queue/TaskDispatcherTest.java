@@ -1,5 +1,10 @@
 package net.sitemorph.queue;
 
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+
 import net.sitemorph.protostore.CrudStore;
 import net.sitemorph.protostore.InMemoryStore;
 import net.sitemorph.protostore.SortOrder;
@@ -11,11 +16,6 @@ import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
 
 import java.util.List;
-
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
 
 /**
  * Tests for the task dispatcher.
@@ -142,15 +142,14 @@ public class TaskDispatcherTest {
   public void testFutureTaskNotRun()
       throws QueueException, InterruptedException {
     CrudTaskQueue queue = getQueue();
+    // remove the current test task
     queue.pop();
-    List<Task> taskList = Lists.newArrayList();
-    taskList.add(Task.newBuilder()
+
+    queue.push(Task.newBuilder()
         .setPath("/")
         .setRunTime(System.currentTimeMillis() + 1000000)
         .setData("")
-        .setUrn("abc")
-        .build());
-
+        .setUrn("abc"));
 
     List<TaskWorker> workers = Lists.newArrayList();
     workers.add(new TestTaskWorker());

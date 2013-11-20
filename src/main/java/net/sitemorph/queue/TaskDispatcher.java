@@ -167,8 +167,7 @@ public class TaskDispatcher implements Runnable {
           queue.remove(task);
           taskQueueFactory.returnTaskQueue(queue);
         } else {
-          log.debug("TaskDispatcher Task Set Failed. Calling Undo.");
-          undo(running);
+          log.debug("TaskDispatcher Task Set Failed.");
           taskQueueFactory.returnTaskQueue(queue);
           synchronized (this) {
             log.debug("TaskDispatcher waiting after error to prevent " +
@@ -306,17 +305,12 @@ public class TaskDispatcher implements Runnable {
     }
   }
 
-  private boolean timeoutTask(long startedTime) {
-    return DateTime.now().isAfter(startedTime + taskTimeout);
-  }
-
   private boolean notDone(List<Future> futures) {
     for (Future future: futures) {
       if (!future.isDone()) {
         return true;
       }
     }
-
     return false;
   }
 

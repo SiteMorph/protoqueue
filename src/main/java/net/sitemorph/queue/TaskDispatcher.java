@@ -207,6 +207,8 @@ public class TaskDispatcher implements Runnable {
     TaskQueue queue = taskQueueFactory.getTaskQueue();
     Task result = queue.push(update);
     taskQueueFactory.returnTaskQueue(queue);
+    // notify self in case sleeping and task could be started
+    notify();
     return result;
   }
 
@@ -321,6 +323,7 @@ public class TaskDispatcher implements Runnable {
   public void shutdown() {
     log.debug("TaskDispatcher Shutting Down");
     synchronized (this) {
+      run = false;
       // notify in case task dispatcher has 'cleanup' left to do for completed
       // tasks
       notify();
@@ -330,8 +333,6 @@ public class TaskDispatcher implements Runnable {
     } catch (InterruptedException e) {
       log.error("Task dispatcher shutdown grace period interrupted");
     }
-
-    run = false;
     executorService.shutdown();
 
   }

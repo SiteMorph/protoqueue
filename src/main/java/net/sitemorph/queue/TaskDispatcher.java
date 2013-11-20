@@ -12,10 +12,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Task dispatcher is used to manage long running tasks. Implementations of a
@@ -33,6 +35,11 @@ import java.util.concurrent.Future;
  * run but if another fails undo will be called. Undo is intended for situations
  * where it would be good to clean up rather than leave work in an inconsistent
  * state. As such it is a best effort feature.
+ *
+ * Tasks must call the done method on the dispatcher or the dispatcher will wait
+ * until it times out. This change was made rather than sleeping to allow the
+ * dispatcher to be more performant by avoiding unnecessary wait periods at the
+ * cost of requiring
  *
  * If no task worker is registered or collaborates in the processing of an
  * event it will be considered 'complete' and removed from the queue.
@@ -56,9 +63,18 @@ public class TaskDispatcher implements Runnable {
   private TaskQueueFactory taskQueueFactory;
   private final List<TaskWorker> workers;
   private long taskTimeout = ONE_DAY;
+  private volatile CountDownLatch countdown;
 
   private TaskDispatcher() {
     workers = Lists.newArrayList();
+  }
+
+  public void taskDone(TaskWorker task) {
+    if (null == countdown) {
+      throw new IllegalStateException("Task signalled done but no task set " +
+          "has been started");
+    }
+    countdown.countDown();
   }
 
   @Override
@@ -83,16 +99,25 @@ public class TaskDispatcher implements Runnable {
       TaskQueue queue = null;
       try {
 
+        Task task;
         queue = taskQueueFactory.getTaskQueue();
-
-        Task task = queue.peek();
+        synchronized (this) {
+          task = queue.peek();
+        }
+        taskQueueFactory.returnTaskQueue(queue);
         // if empty or future then sleep
         if (null == task || isFutureTask(task)) {
           try {
             log.debug("TaskDispatcher out of tasks. Sleeping");
-            taskQueueFactory.returnTaskQueue(queue);
+
             synchronized (this) {
-              wait(sleep);
+              long period = null == task? sleep : task.getRunTime() -
+                  DateTime.now(DateTimeZone.UTC).getMillis();
+              if (1 > period) {
+                // sleep with 0 is forever until interrupted.
+                period = 1;
+              }
+              wait(period);
             }
           } catch (InterruptedException e) {
             log.info("TaskDispatcher interrupted while waiting for more tasks");
@@ -104,6 +129,7 @@ public class TaskDispatcher implements Runnable {
         List<Future> futures = Lists.newArrayList();
         List<TaskWorker> running = Lists.newArrayList();
         long start = System.currentTimeMillis();
+
         synchronized (this) {
           for (TaskWorker worker : workers) {
             log.debug("Considering worker {} for task {}", worker.getClass(),
@@ -111,35 +137,31 @@ public class TaskDispatcher implements Runnable {
             if (worker.isRelevant(task)) {
               worker.reset();
               worker.setTask(task, this);
-              futures.add(executorService.submit(worker));
               running.add(worker);
             }
           }
-        }
+          countdown = new CountDownLatch(running.size());
+          for (TaskWorker runMe : running) {
+            futures.add(executorService.submit(runMe));
 
-        // await futures
-        while (notDone(futures)) {
-          try {
-            log.debug("TaskDispatcher waiting for tasks to complete");
-            synchronized (this) {
-              wait(sleep);
-            }
-          } catch(InterruptedException e) {
-            log.info("TaskDispatcher interrupted waiting for tasks " +
-                "to complete");
-          }
-          if (!run) {
-            // have been shut down
-            break;
-          }
-          if (timeoutTask(start)) {
-            log.debug("TaskDispatcher Task timeout reached. Cancelling.");
-            cancelTasks(futures);
           }
         }
 
+        // await futures. For now we can live with them not notifying.
+        countdown.await(taskTimeout, TimeUnit.MILLISECONDS);
+        if (notDone(futures)) {
+          log.info("TaskDispatcher waited but tasks not done. Cancelling them.");
+          cancelTasks(futures);
+        }
+        if (!run) {
+          log.info("TaskDispatcher has been signalled to stop to exiting now");
+          break;
+        }
+
+        // restore the task queue
+        queue = taskQueueFactory.getTaskQueue();
         // if all done check status
-        if (run && successful(running)) {
+        if (successful(running)) {
           log.debug("TaskDispatcher Task Set Successful. De-queueing Task {}",
               task.getUrn());
           queue.remove(task);
@@ -178,26 +200,24 @@ public class TaskDispatcher implements Runnable {
    *
    * @param worker listener
    */
-  public void deregister(TaskWorker worker) {
-    synchronized (this) {
-      workers.remove(worker);
-    }
+  public synchronized void deregister(TaskWorker worker) {
+    workers.remove(worker);
   }
 
-  public Task schedule(Task.Builder update) throws QueueException {
+  public synchronized Task schedule(Task.Builder update) throws QueueException {
     TaskQueue queue = taskQueueFactory.getTaskQueue();
     Task result = queue.push(update);
     taskQueueFactory.returnTaskQueue(queue);
     return result;
   }
 
-  public void deschedule(Task task) throws QueueException  {
+  public synchronized void deschedule(Task task) throws QueueException  {
     TaskQueue queue = taskQueueFactory.getTaskQueue();
     queue.remove(task);
     taskQueueFactory.returnTaskQueue(queue);
   }
 
-  public boolean isTaskScheduled(String path)
+  public synchronized boolean isTaskScheduled(String path)
       throws QueueException {
     // run over the task queue and ensure that there is a task for this event
     // scheduled
@@ -235,7 +255,7 @@ public class TaskDispatcher implements Runnable {
    * @param path of the task
    * @return true if found for the interval provided
    */
-  public boolean isTaskScheduled(String path, Interval interval)
+  public synchronized boolean isTaskScheduled(String path, Interval interval)
       throws QueueException {
     boolean scheduled = false;
     TaskQueue queue = null;
@@ -264,21 +284,6 @@ public class TaskDispatcher implements Runnable {
       throw new QueueException("Error accessing queue storage", e);
     }
     return scheduled;
-  }
-
-  private void undo(List<TaskWorker> running)
-      throws ExecutionException, InterruptedException {
-    if (!run) {
-      log.error("Undo tasks could not be completed due to scheduler shutdown " +
-          "prior to undo invocation.");
-      return;
-    }
-    for (TaskWorker worker : running) {
-      log.info("Calling undo for {} in state {}",
-          worker.getClass().getCanonicalName(), worker.getStatus());
-      Future future = executorService.submit(new UndoCaller(worker));
-      future.get();
-    }
   }
 
   private boolean successful(List<TaskWorker> running) {

@@ -64,11 +64,6 @@ public class TestTaskWorker implements TaskWorker {
   }
 
   @Override
-  public void undo() {
-    hasUndone = true;
-  }
-
-  @Override
   public void run() {
     hasRun = true;
     if (null != dispatcher) {
@@ -78,6 +73,7 @@ public class TestTaskWorker implements TaskWorker {
     if (hasUndone) {
       //dispatcher.deregister(this);
     }
+    dispatcher.taskDone(this);
   }
 
   public boolean hasRun() {

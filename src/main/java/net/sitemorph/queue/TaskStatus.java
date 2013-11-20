@@ -27,10 +27,6 @@ public enum TaskStatus {
    */
   STOPPED,
   /**
-   * The task's last run has been undone.
-   */
-  UNDONE,
-  /**
    * The task has completed the last call to run with the previously set scope
    */
   DONE

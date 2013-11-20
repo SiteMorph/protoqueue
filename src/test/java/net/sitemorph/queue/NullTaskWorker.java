@@ -9,6 +9,7 @@ import net.sitemorph.queue.Message.Task;
  */
 public class NullTaskWorker implements TaskWorker {
   private volatile TaskStatus state;
+  private volatile TaskDispatcher dispatcher;
 
   @Override
   public void reset() {
@@ -23,6 +24,7 @@ public class NullTaskWorker implements TaskWorker {
   @Override
   public void setTask(Task task, TaskDispatcher dispatcher) {
     state = TaskStatus.TASK_SET;
+    this.dispatcher = dispatcher;
   }
 
   @Override
@@ -36,12 +38,8 @@ public class NullTaskWorker implements TaskWorker {
   }
 
   @Override
-  public void undo() {
-    state = TaskStatus.UNDONE;
-  }
-
-  @Override
   public void run() {
     state = TaskStatus.DONE;
+    dispatcher.taskDone(this);
   }
 }

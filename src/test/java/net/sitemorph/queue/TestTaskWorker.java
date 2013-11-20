@@ -41,9 +41,6 @@ public class TestTaskWorker implements TaskWorker {
   @Override
   public TaskStatus getStatus() {
     if (null == overrideStatus) {
-      if (hasUndone) {
-        return TaskStatus.UNDONE;
-      }
       if (hasRun) {
         return TaskStatus.DONE;
       } else {

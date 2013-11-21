@@ -117,6 +117,13 @@ public class TaskDispatcher implements Runnable {
                 // sleep with 0 is forever until interrupted.
                 period = 1;
               }
+              if (sleep < period) {
+                // if the next sleep would be longer than a sleep cycle then
+                // use the sleep cycle to avoid tasks having to wait more than
+                // one sleep cycle to be considered (if scheduled out of the
+                // scheduler via a back end insert).
+                period = sleep;
+              }
               wait(period);
             }
           } catch (InterruptedException e) {

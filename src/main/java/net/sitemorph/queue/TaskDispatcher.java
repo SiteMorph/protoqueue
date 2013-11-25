@@ -148,12 +148,16 @@ public class TaskDispatcher implements Runnable {
           countdown = new CountDownLatch(running.size());
           for (TaskWorker runMe : running) {
             futures.add(executorService.submit(runMe));
-
           }
         }
 
         // await futures. For now we can live with them not notifying.
-        countdown.await(taskTimeout, TimeUnit.MILLISECONDS);
+        boolean done = countdown.await(taskTimeout, TimeUnit.MILLISECONDS);
+        if (done) {
+          log.debug("TaskDispatcher callbacks all called. Proceeding.");
+        } else {
+          log.debug("TaskDispatcher callbacks did not complete. Potential bug");
+        }
         if (notDone(futures)) {
           log.info("TaskDispatcher waited but tasks not done. Cancelling them.");
           cancelTasks(futures);

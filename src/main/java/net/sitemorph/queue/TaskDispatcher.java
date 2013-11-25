@@ -139,8 +139,6 @@ public class TaskDispatcher implements Runnable {
 
         synchronized (this) {
           for (TaskWorker worker : workers) {
-            log.debug("Considering worker {} for task {}", worker.getClass(),
-                task.getUrn());
             if (worker.isRelevant(task)) {
               worker.reset();
               worker.setTask(task, this);

@@ -16,7 +16,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -133,9 +132,7 @@ public class TaskDispatcher implements Runnable {
         }
 
         // build the set of workers up
-        List<Future> futures = Lists.newArrayList();
         List<TaskWorker> running = Lists.newArrayList();
-        long start = System.currentTimeMillis();
 
         synchronized (this) {
           for (TaskWorker worker : workers) {
@@ -145,9 +142,10 @@ public class TaskDispatcher implements Runnable {
               running.add(worker);
             }
           }
+          // create a new countdown for this worker set
           countdown = new CountDownLatch(running.size());
           for (TaskWorker runMe : running) {
-            futures.add(executorService.submit(runMe));
+            executorService.execute(runMe);
           }
         }
 
@@ -157,10 +155,6 @@ public class TaskDispatcher implements Runnable {
           log.debug("TaskDispatcher callbacks all called. Proceeding.");
         } else {
           log.debug("TaskDispatcher callbacks did not complete. Potential bug");
-        }
-        if (notDone(futures)) {
-          log.info("TaskDispatcher waited but tasks not done. Cancelling them.");
-          cancelTasks(futures);
         }
         if (!run) {
           log.info("TaskDispatcher has been signalled to stop to exiting now");
@@ -177,6 +171,7 @@ public class TaskDispatcher implements Runnable {
           taskQueueFactory.returnTaskQueue(queue);
         } else {
           log.debug("TaskDispatcher Task Set Failed.");
+          cancelTasks(running);
           taskQueueFactory.returnTaskQueue(queue);
           synchronized (this) {
             log.debug("TaskDispatcher waiting after error to prevent " +
@@ -305,24 +300,11 @@ public class TaskDispatcher implements Runnable {
     return true;
   }
 
-  private void cancelTasks(List<Future> futures)
+  private void cancelTasks(List<TaskWorker> workers)
       throws ExecutionException, InterruptedException {
-    for(Future future : futures) {
-      Object task = future.get();
-      if (task instanceof TaskWorker) {
-        ((TaskWorker) task).stop();
-      }
-      future.cancel(true);
+    for(TaskWorker task : workers) {
+      task.stop();
     }
-  }
-
-  private boolean notDone(List<Future> futures) {
-    for (Future future: futures) {
-      if (!future.isDone()) {
-        return true;
-      }
-    }
-    return false;
   }
 
   private boolean isFutureTask(Task task) {

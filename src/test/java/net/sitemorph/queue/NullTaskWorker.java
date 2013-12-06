@@ -40,6 +40,5 @@ public class NullTaskWorker implements TaskWorker {
   @Override
   public void run() {
     state = TaskStatus.DONE;
-    dispatcher.taskDone(this);
   }
 }

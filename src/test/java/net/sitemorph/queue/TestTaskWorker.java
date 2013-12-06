@@ -70,7 +70,6 @@ public class TestTaskWorker implements TaskWorker {
     if (hasUndone) {
       //dispatcher.deregister(this);
     }
-    dispatcher.taskDone(this);
   }
 
   public boolean hasRun() {

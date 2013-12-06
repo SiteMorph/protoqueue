@@ -12,10 +12,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -62,18 +63,9 @@ public class TaskDispatcher implements Runnable {
   private TaskQueueFactory taskQueueFactory;
   private final List<TaskWorker> workers;
   private long taskTimeout = ONE_DAY;
-  private volatile CountDownLatch countdown;
 
   private TaskDispatcher() {
     workers = Lists.newArrayList();
-  }
-
-  public void taskDone(TaskWorker task) {
-    if (null == countdown) {
-      throw new IllegalStateException("Task signalled done but no task set " +
-          "has been started");
-    }
-    countdown.countDown();
   }
 
   @Override
@@ -132,46 +124,44 @@ public class TaskDispatcher implements Runnable {
         }
 
         // build the set of workers up
-        List<TaskWorker> running = Lists.newArrayList();
+        List<Callable<Task>> running = Lists.newArrayList();
+        List<TaskWorker> taskSet = Lists.newArrayList();
 
         synchronized (this) {
           for (TaskWorker worker : workers) {
             if (worker.isRelevant(task)) {
               worker.reset();
               worker.setTask(task, this);
-              running.add(worker);
+              running.add(new CallableAdapter(worker, task));
+              taskSet.add(worker);
             }
           }
-          // create a new countdown for this worker set
-          countdown = new CountDownLatch(running.size());
-          for (TaskWorker runMe : running) {
-            executorService.execute(runMe);
-          }
         }
-
-        // await futures. For now we can live with them not notifying.
-        boolean done = countdown.await(taskTimeout, TimeUnit.MILLISECONDS);
-        if (done) {
-          log.debug("TaskDispatcher callbacks all called. Proceeding.");
-        } else {
-          log.debug("TaskDispatcher callbacks did not complete. Potential bug");
-        }
-        if (!run) {
-          log.info("TaskDispatcher has been signalled to stop to exiting now");
-          break;
+        boolean ok = true;
+        try {
+          executorService.invokeAll(running, taskTimeout, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+          log.error("TaskDispatcher Task set was interrupted", e);
+          ok = false;
+        } catch (NullPointerException e) {
+          log.error("TaskDispatcher Null element in worker set", e);
+          ok = false;
+        } catch (RejectedExecutionException e) {
+          log.error("TaskDispatcher error scheduling task", e);
+          ok = false;
         }
 
         // restore the task queue
         queue = taskQueueFactory.getTaskQueue();
         // if all done check status
-        if (successful(running)) {
+        if (run && ok && successful(taskSet)) {
           log.debug("TaskDispatcher Task Set Successful. De-queueing Task {}",
               task.getUrn());
           queue.remove(task);
           taskQueueFactory.returnTaskQueue(queue);
         } else {
           log.debug("TaskDispatcher Task Set Failed.");
-          cancelTasks(running);
+          cancelTasks(taskSet);
           taskQueueFactory.returnTaskQueue(queue);
           synchronized (this) {
             log.debug("TaskDispatcher waiting after error to prevent " +

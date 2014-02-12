@@ -1,10 +1,5 @@
 package net.sitemorph.queue;
 
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
-
 import net.sitemorph.protostore.CrudStore;
 import net.sitemorph.protostore.InMemoryStore;
 import net.sitemorph.protostore.SortOrder;
@@ -16,6 +11,11 @@ import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
 
 import java.util.List;
+
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 /**
  * Tests for the task dispatcher.
@@ -112,7 +112,6 @@ public class TaskDispatcherTest {
     log.debug("TEST TASK RUN SUCCESSFUL DONE");
 
   }
-
 
   @Test(groups = "slowTest")
   public void testTwoTaskOneFailNoRun() throws QueueException, InterruptedException {

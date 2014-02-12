@@ -157,8 +157,8 @@ public class TaskDispatcher implements Runnable {
         queue = taskQueueFactory.getTaskQueue();
         // if all done check status
         if (run && ok && successful(taskSet)) {
-          log.debug("TaskDispatcher Task Set Successful. De-queueing Task {}",
-              task.getUrn());
+          log.debug("TaskDispatcher {} Task Set Successful. De-queueing Task {}",
+              task.getPath(), task.getUrn());
           queue.remove(task);
           taskQueueFactory.returnTaskQueue(queue);
         } else {
@@ -331,6 +331,7 @@ public class TaskDispatcher implements Runnable {
   public static class Builder {
 
     private UncaughtExceptionHandler handler = null;
+    private int poolSize = 1;
 
     private Builder() {
       dispatcher = new TaskDispatcher();
@@ -345,21 +346,15 @@ public class TaskDispatcher implements Runnable {
      * @return builder
      */
     public Builder setWorkerPoolSize(int poolSize) {
-      ThreadFactory factory = new ThreadFactory() {
-
-        @Override
-        public Thread newThread(Runnable runnable) {
-          final Thread thread = new Thread(runnable);
-          if (null != handler) {
-            thread.setUncaughtExceptionHandler(handler);
-          }
-          return thread;
-        }
-      };
-      dispatcher.executorService =
-          Executors.newFixedThreadPool(poolSize, factory);
+      this.poolSize = poolSize;
       return this;
     }
+
+    /**
+     * Set the uncaught exception handler for a a task dispatcher.
+     * @param handler to handle the exception.
+     * @return fluent builder
+     */
 
     public Builder setUncaughtExceptionHandler(
         UncaughtExceptionHandler handler) {
@@ -419,7 +414,7 @@ public class TaskDispatcher implements Runnable {
      *    task queue factory has not been set
      */
     public TaskDispatcher build() {
-      if (null == dispatcher.executorService) {
+      if (0 > poolSize) {
         throw new IllegalStateException("Could not build task dispatcher " +
             "as the executor pool size was not set");
       }
@@ -427,6 +422,20 @@ public class TaskDispatcher implements Runnable {
         throw new IllegalStateException("Could not build task dispatcher " +
             "as the task queue factory has not been set");
       }
+      // create a factory to set up a handler per thread.
+      final UncaughtExceptionHandler exceptionHandler = this.handler;
+      ThreadFactory factory = new ThreadFactory() {
+        @Override
+        public Thread newThread(Runnable runnable) {
+          final Thread thread = new Thread(runnable);
+          if (null != exceptionHandler) {
+            thread.setUncaughtExceptionHandler(exceptionHandler);
+          }
+          return thread;
+        }
+      };
+      dispatcher.executorService =
+          Executors.newFixedThreadPool(poolSize, factory);
       return dispatcher;
     }
   }

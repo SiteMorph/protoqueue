@@ -11,12 +11,14 @@ import org.joda.time.Interval;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -328,6 +330,8 @@ public class TaskDispatcher implements Runnable {
 
   public static class Builder {
 
+    private UncaughtExceptionHandler handler = null;
+
     private Builder() {
       dispatcher = new TaskDispatcher();
     }
@@ -341,7 +345,25 @@ public class TaskDispatcher implements Runnable {
      * @return builder
      */
     public Builder setWorkerPoolSize(int poolSize) {
-      dispatcher.executorService = Executors.newFixedThreadPool(poolSize);
+      ThreadFactory factory = new ThreadFactory() {
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+          final Thread thread = new Thread(runnable);
+          if (null != handler) {
+            thread.setUncaughtExceptionHandler(handler);
+          }
+          return thread;
+        }
+      };
+      dispatcher.executorService =
+          Executors.newFixedThreadPool(poolSize, factory);
+      return this;
+    }
+
+    public Builder setUncaughtExceptionHandler(
+        UncaughtExceptionHandler handler) {
+      this.handler = handler;
       return this;
     }
 

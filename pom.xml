@@ -14,7 +14,7 @@
   <artifactId>protoqueue</artifactId>
   <packaging>jar</packaging>
   <name>SiteMorph Task Queue</name>
-  <version>3.0.0</version>
+  <version>3.0.1</version>
 
   <dependencies>
 

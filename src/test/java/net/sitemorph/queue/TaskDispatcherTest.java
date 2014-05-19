@@ -53,6 +53,7 @@ public class TaskDispatcherTest {
     CrudStore<Task> taskStore = new InMemoryStore.Builder<Task>()
         .setPrototype(Task.newBuilder())
         .setUrnField("urn")
+        .setVectorField("vector")
         .addIndexField("runTime")
         .addIndexField("path")
         .setSortOrder("runTime", SortOrder.ASCENDING)

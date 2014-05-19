@@ -1,8 +1,5 @@
 package net.sitemorph.queue;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNull;
-
 import net.sitemorph.protostore.CrudStore;
 import net.sitemorph.protostore.InMemoryStore;
 import net.sitemorph.protostore.SortOrder;
@@ -10,6 +7,9 @@ import net.sitemorph.queue.Message.Task;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 /**
  * Test suite for basic queue operations.
@@ -24,6 +24,7 @@ public class TestTaskQueue {
     CrudStore<Task> taskStore = new InMemoryStore.Builder<Task>()
         .setPrototype(Task.newBuilder())
         .setUrnField("urn")
+        .setVectorField("vector")
         .addIndexField("runTime")
         .addIndexField("path")
         .setSortOrder("runTime", SortOrder.ASCENDING)

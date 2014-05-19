@@ -15,4 +15,6 @@ message Task {
   required int64 runTime = 3;
   // The data associated with the queue item
   optional string data = 4;
+  // The vector field which is updated by the protostore on update
+  required int64 vector = 5;
 }

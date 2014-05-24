@@ -1,9 +1,12 @@
 package net.sitemorph.queue;
 
+import static org.joda.time.DateTime.now;
+
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.protostore.CrudStore;
 import net.sitemorph.protostore.DbUrnFieldStore;
+import net.sitemorph.protostore.MessageVectorException;
 import net.sitemorph.protostore.SortOrder;
 import net.sitemorph.queue.Message.Task;
 
@@ -11,8 +14,7 @@ import org.joda.time.DateTimeZone;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-
-import static org.joda.time.DateTime.now;
+import java.util.UUID;
 
 /**
  * The task queue builder constructs a task queue from a set of configuration
@@ -44,43 +46,62 @@ public class CrudTaskQueue implements TaskQueue {
   }
 
   /**
-   * @see TaskQueue#peek()
+   * @see TaskQueue#claim(UUID, long, long)
    */
   @Override
-  public Task peek() throws QueueException {
+  public Task claim(UUID identity, long now, long claimTimeout) throws QueueException {
+    Task result = null;
     try {
       CrudIterator<Task> tasks = taskStore.read(Task.newBuilder());
-      Task result;
-      if (tasks.hasNext()) {
+      while (tasks.hasNext()) {
         result = tasks.next();
-      } else {
-        result = null;
+        // If the task is in the future then return
+        if (isFutureTask(result)) {
+          result = null;
+          break;
+        }
+        if (result.hasClaim()) {
+          if (now < result.getClaimTimeout()) {
+            result = null;
+          } else {
+            // the claim is timed out
+            break;
+          }
+        } else {
+          // we have found a claim
+          break;
+        }
       }
       tasks.close();
+      if (null != result) {
+        result = taskStore.update(result.toBuilder()
+            .setClaim(identity.toString())
+            .setClaimTimeout(claimTimeout));
+      }
       return result;
+    } catch (MessageVectorException e) {
+      throw new StaleClaimException("Claim attempted when already claimed.", e);
     } catch (CrudException e) {
-      throw new QueueException("Storage error peeking at queue", e);
+      throw new QueueException("Storage error claiming from queue", e);
     }
   }
 
+  private boolean isFutureTask(Task task) {
+    return now(DateTimeZone.UTC).isBefore(task.getRunTime());
+  }
+
   /**
-   * @see TaskQueue#pop()
+   * @see TaskQueue#release(Task)
    */
-  @Override
-  public Task pop() throws QueueException {
+  public void release(Task task) throws QueueException {
     try {
-      CrudIterator<Task> tasks = taskStore.read(Task.newBuilder());
-      Task result;
-      if (tasks.hasNext()) {
-        result = tasks.next();
-        taskStore.delete(result);
-      } else {
-        result = null;
-      }
-      tasks.close();
-      return result;
+      taskStore.update(task.toBuilder()
+          .clearClaim()
+          .clearClaimTimeout());
+    } catch (MessageVectorException e) {
+      throw new StaleClaimException("release attempt when claim out of date", e);
     } catch (CrudException e) {
-      throw new QueueException("Storage error popping from queue", e);
+      throw new QueueException("Storage error releasing task", e);
     }
   }
 
@@ -189,7 +210,8 @@ public class CrudTaskQueue implements TaskQueue {
             .setPrototype(Task.newBuilder())
             .setUrnColumn("urn")
             .addIndexField("path")
-            .setSortOrder("runTime", SortOrder.ASCENDING);
+            .setSortOrder("runTime", SortOrder.ASCENDING)
+            .setVectorField("vector");
         CrudStore<Task> store = taskStore.build();
         return new CrudTaskQueue(store, connection);
       } catch (CrudException e) {

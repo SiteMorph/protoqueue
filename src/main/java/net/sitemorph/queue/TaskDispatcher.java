@@ -1,18 +1,19 @@
 package net.sitemorph.queue;
 
+import static org.joda.time.DateTime.now;
+
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.queue.Message.Task;
 
 import com.google.common.collect.Lists;
-import org.joda.time.DateTime;
-import org.joda.time.DateTimeZone;
 import org.joda.time.Interval;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -22,14 +23,16 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Task dispatcher is used to manage long running tasks. Implementations of a
+ * Task dispatcher is used to manage long running and future tasks.
+ * Implementations of a
  * task runner should be implemented such that they can be killed or restarted
  * at will. This ultimately means that they should support 'resuming' based on
  * data passed as state.
  *
  * The semantics of the task dispatcher are that it will try to execute tasks
  * using the registered tasks and will keep retrying until success, at which
- * point the task is removed from the queue.
+ * point the task is removed from the queue. Tasks are claimed by a dispatcher
+ * which releases the task.
  *
  * If multiple task executors are registered for a path then all must complete.
  * If one of the tasks fails to complete then all tasks will be called to undo
@@ -51,8 +54,6 @@ import java.util.concurrent.TimeUnit;
  * Tasks will be executed as soon after their timestamp as possible but future
  * tasks will not be executed until they are overdue.
  */
-
-// TODO 20131008 Implement critical section around queue updates
 public class TaskDispatcher implements Runnable {
 
   private static final long TASK_TIMEOUT_PERIOD = 1000;
@@ -65,6 +66,7 @@ public class TaskDispatcher implements Runnable {
   private TaskQueueFactory taskQueueFactory;
   private final List<TaskWorker> workers;
   private long taskTimeout = ONE_DAY;
+  private UUID identity;
 
   private TaskDispatcher() {
     workers = Lists.newArrayList();
@@ -90,33 +92,43 @@ public class TaskDispatcher implements Runnable {
       log.debug("TaskDispatcher Starting Run");
 
       TaskQueue queue = null;
+      long time = now().getMillis();
       try {
-
         Task task;
         queue = taskQueueFactory.getTaskQueue();
-        synchronized (this) {
-          task = queue.peek();
-        }
-        taskQueueFactory.returnTaskQueue(queue);
+        task = queue.claim(identity, time, time + taskTimeout + sleep);
         // if empty or future then sleep
-        if (null == task || isFutureTask(task)) {
+        if (null == task) {
+
+          long alarm = time + sleep;
+
+          // figure out the next task time
+          CrudIterator<Task> tasks = queue.tasks();
+          Task nextTask = null;
+
+          while (tasks.hasNext()) {
+            Task candidate = tasks.next();
+            if (candidate.getRunTime() > alarm) {
+              break; // task is after next wake up
+            }
+            if (candidate.hasClaimTimeout() &&
+                candidate.getClaimTimeout() < alarm) {
+              alarm = candidate.getClaimTimeout();
+            }
+            if (candidate.getRunTime() < alarm) {
+              alarm = candidate.getRunTime();
+            }
+          }
+          tasks.close();
+          long period = time - alarm;
+          if (1 > period) {
+            period = 1;
+          }
+          taskQueueFactory.returnTaskQueue(queue);
+          queue = null;
           try {
             log.debug("TaskDispatcher out of tasks. Sleeping");
-
             synchronized (this) {
-              long period = null == task? sleep : task.getRunTime() -
-                  DateTime.now(DateTimeZone.UTC).getMillis();
-              if (1 > period) {
-                // sleep with 0 is forever until interrupted.
-                period = 1;
-              }
-              if (sleep < period) {
-                // if the next sleep would be longer than a sleep cycle then
-                // use the sleep cycle to avoid tasks having to wait more than
-                // one sleep cycle to be considered (if scheduled out of the
-                // scheduler via a back end insert).
-                period = sleep;
-              }
               wait(period);
             }
           } catch (InterruptedException e) {
@@ -124,21 +136,22 @@ public class TaskDispatcher implements Runnable {
           }
           continue;
         }
+        // return the task queue while the worker is at it...
+        taskQueueFactory.returnTaskQueue(queue);
 
         // build the set of workers up
         List<Callable<Task>> running = Lists.newArrayList();
         List<TaskWorker> taskSet = Lists.newArrayList();
 
-        synchronized (this) {
-          for (TaskWorker worker : workers) {
-            if (worker.isRelevant(task)) {
-              worker.reset();
-              worker.setTask(task, this);
-              running.add(new CallableAdapter(worker, task));
-              taskSet.add(worker);
-            }
+        for (TaskWorker worker : workers) {
+          if (worker.isRelevant(task)) {
+            worker.reset();
+            worker.setTask(task, this);
+            running.add(new CallableAdapter(worker, task));
+            taskSet.add(worker);
           }
         }
+
         boolean ok = true;
         try {
           executorService.invokeAll(running, taskTimeout, TimeUnit.MILLISECONDS);
@@ -159,10 +172,18 @@ public class TaskDispatcher implements Runnable {
         if (run && ok && successful(taskSet)) {
           log.debug("TaskDispatcher {} Task Set Successful. De-queueing Task {}",
               task.getPath(), task.getUrn());
-          queue.remove(task);
-          taskQueueFactory.returnTaskQueue(queue);
-        } else {
+          try {
+            queue.remove(task);
+            taskQueueFactory.returnTaskQueue(queue);
+          } catch (StaleClaimException e) {
+            ok = false;
+            log.info("Successful task but queue reports task as stale so " +
+                "cancelling");
+          }
+        }
+        if (!ok) {
           log.debug("TaskDispatcher Task Set Failed.");
+          queue.release(task);
           cancelTasks(taskSet);
           taskQueueFactory.returnTaskQueue(queue);
           synchronized (this) {
@@ -299,9 +320,7 @@ public class TaskDispatcher implements Runnable {
     }
   }
 
-  private boolean isFutureTask(Task task) {
-    return DateTime.now(DateTimeZone.UTC).isBefore(task.getRunTime());
-  }
+
 
   public void shutdown() {
     log.debug("TaskDispatcher Shutting Down");
@@ -347,6 +366,16 @@ public class TaskDispatcher implements Runnable {
      */
     public Builder setWorkerPoolSize(int poolSize) {
       this.poolSize = poolSize;
+      return this;
+    }
+
+    /**
+     * Set the claim identity of the task dispatcher.
+     *
+     * @param identity
+     */
+    public Builder setIdentity(UUID identity) {
+      this.dispatcher.identity = identity;
       return this;
     }
 
@@ -421,6 +450,10 @@ public class TaskDispatcher implements Runnable {
       if (null == dispatcher.taskQueueFactory) {
         throw new IllegalStateException("Could not build task dispatcher " +
             "as the task queue factory has not been set");
+      }
+      if (null == dispatcher.identity) {
+        throw new IllegalStateException("Could not build task dispatcher " +
+            "as the identity of the dispatcher was not set");
       }
       // create a factory to set up a handler per thread.
       final UncaughtExceptionHandler exceptionHandler = this.handler;

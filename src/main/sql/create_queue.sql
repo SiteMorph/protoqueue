@@ -5,5 +5,7 @@ CREATE TABLE TaskQueue (
   path VARCHAR(2048) NOT NULL,
   runTime BIGINT NOT NULL,
   data VARCHAR(4096),
-  vector BIGINT NOT NULL
+  vector BIGINT NOT NULL,
+  claim VARCHAR(255),
+  claimTimeout BIGINT
 ) CHARACTER SET utf8;

@@ -3,6 +3,8 @@ package net.sitemorph.queue;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.queue.Message.Task;
 
+import java.util.UUID;
+
 /**
  * A general purpose queue implementation which always queues tasks and skips
  * reflection etc. Typed queues should be implemented by using contained data
@@ -14,19 +16,31 @@ import net.sitemorph.queue.Message.Task;
 public interface TaskQueue {
 
   /**
-   * Peek at the current item on the top of the queue. This method is
-   * idempotent as it has no side effects.
+   * Claim the current item on the top of the queue. It will read the first
+   * non-claimed task, as such this supports multiple consumer dispatchers to
+   * claim tasks.
    *
+   * The claim will instantiate a claim on the task that it returns.
+   *
+   * Note that only overdue tasks will be returned.
+   *
+   * @param identity of the claimer
+   * @param now is the current time
+   * @param claimTimeout epoc time after which the claim should be considered
+   *                     invalid.
    * @return the current task. Returns null if nothing present in the queue.
    */
-  public Task peek() throws QueueException;
+  public Task claim(UUID identity, long now,
+      long claimTimeout) throws QueueException;
 
   /**
-   * Pop the current item from the queue returning it.
+   * Release a claimed task on failure or other scenario where others may then
+   * claim the task
    *
-   * @return the old top of the queue. Returns null on queue empty.
+   * @param task which has been claimed using the claim method.
+   * @throws StaleClaimException when the claim is out of date.
    */
-  public Task pop() throws QueueException;
+  public void release(Task task) throws QueueException, StaleClaimException;
 
   /**
    * Push an item onto the queue. Note that the time will be set if it has not
@@ -38,7 +52,8 @@ public interface TaskQueue {
   public Task push(Task.Builder task) throws QueueException;
 
   /**
-   * Remove a task from the queue.
+   * Remove a task from the queue. This method will fail if the current vector
+   * is out of date or
    *
    * @param task to remove from the queue
    */

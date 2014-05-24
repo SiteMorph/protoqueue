@@ -1,5 +1,10 @@
 package net.sitemorph.queue;
 
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+
 import net.sitemorph.protostore.CrudStore;
 import net.sitemorph.protostore.InMemoryStore;
 import net.sitemorph.protostore.SortOrder;
@@ -11,11 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
 
 import java.util.List;
-
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
+import java.util.UUID;
 
 /**
  * Tests for the task dispatcher.
@@ -25,6 +26,9 @@ import static org.testng.Assert.assertTrue;
 public class TaskDispatcherTest {
 
   private Logger log = LoggerFactory.getLogger("TaskDispatcherTest");
+  UUID tester = UUID.randomUUID();
+  private long now = System.currentTimeMillis();
+  private long timeout = now + 60000;
 
   TaskDispatcher getDispatcher(final CrudTaskQueue queue, List<TaskWorker> workers)
       throws QueueException {
@@ -33,6 +37,7 @@ public class TaskDispatcherTest {
     builder.setSleepInterval(1000)
         .setTaskTimeout(10000)
         .setWorkerPoolSize(1)
+        .setIdentity(tester)
         .setTaskQueueFactory(new TaskQueueFactory() {
           @Override
           public TaskQueue getTaskQueue() {
@@ -85,7 +90,8 @@ public class TaskDispatcherTest {
     Thread.sleep(1500);
 
     assertTrue(worker.hasRun(), "Worker was not run");
-    assertNotNull(queue.peek(), "Task list should still have the task " +
+    assertNotNull(queue.claim(tester, now, now + timeout),
+        "Task list should still have the task " +
         "as the scheduler was shutdown before the run was complete");
     log.debug("TEST TASK RUN SHUTDOWN DONE");
   }
@@ -108,7 +114,8 @@ public class TaskDispatcherTest {
 
     assertTrue(worker.getStatus() == TaskStatus.DONE,
         "Worker should have been run");
-    assertNull(queue.peek(), "Task queue should be empty after success");
+    assertNull(queue.claim(tester, now, timeout),
+        "Task queue should be empty after success");
     dispatcher.shutdown();
     log.debug("TEST TASK RUN SUCCESSFUL DONE");
 
@@ -135,7 +142,8 @@ public class TaskDispatcherTest {
 
     assertTrue(((TestTaskWorker) workers.get(0)).hasRun(), "Worker 0 was not run");
     assertTrue(((TestTaskWorker) workers.get(1)).hasRun(), "Worker 1 was not run");
-    assertNotNull(queue.peek(), "Queue should not have been emptied");
+    assertNotNull(queue.claim(tester, now, timeout),
+        "Queue should not have been emptied");
   }
 
   @Test(groups = "slowTest")
@@ -143,9 +151,9 @@ public class TaskDispatcherTest {
       throws QueueException, InterruptedException {
     CrudTaskQueue queue = getQueue();
     // remove the current test task
-    queue.pop();
+    queue.claim(tester, now, timeout);
 
-    queue.push(Task.newBuilder()
+    Task future = queue.push(Task.newBuilder()
         .setPath("/")
         .setRunTime(System.currentTimeMillis() + 1000000)
         .setData("")
@@ -167,14 +175,15 @@ public class TaskDispatcherTest {
 
     assertFalse(((TestTaskWorker) workers.get(0)).hasRun(),
         "Worker 0 was not run");
-    assertNotNull(queue.peek(), "Queue should not have been emptied");
+    assertNotNull(queue.claim(tester, now, timeout),
+        "Queue should not have been emptied");
   }
 
   @Test(groups = "slowTest")
   public void testTaskReturnsConnectionToFactoryOnEmpty()
       throws InterruptedException, QueueException {
     final CrudTaskQueue queue = getQueue();
-    queue.pop();
+    queue.claim(tester, now, timeout);
     List<TestTaskWorker> workers = Lists.newArrayList();
     workers.add(new TestTaskWorker());
     final boolean[] returnedQueue = new boolean[1];
@@ -182,6 +191,7 @@ public class TaskDispatcherTest {
 
     TaskDispatcher.Builder builder = TaskDispatcher.newBuilder();
     builder.setSleepInterval(1000)
+        .setIdentity(tester)
         .setTaskTimeout(10000)
         .setWorkerPoolSize(1)
         .setTaskQueueFactory(new TaskQueueFactory() {

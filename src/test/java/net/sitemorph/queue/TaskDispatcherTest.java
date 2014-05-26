@@ -1,10 +1,11 @@
 package net.sitemorph.queue;
 
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import net.sitemorph.protostore.CrudException;
+import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.protostore.CrudStore;
 import net.sitemorph.protostore.InMemoryStore;
 import net.sitemorph.protostore.SortOrder;
@@ -73,7 +74,7 @@ public class TaskDispatcherTest {
   }
 
   @Test(groups = "slowTest")
-  public void testTasksRun() throws InterruptedException, QueueException {
+  public void testTasksRun() throws InterruptedException, QueueException, CrudException {
     log.debug("TEST TASK RUN SHUTDOWN STARTING");
     List<TaskWorker> workers = Lists.newArrayList();
     TestTaskWorker worker = new TestTaskWorker();
@@ -90,9 +91,10 @@ public class TaskDispatcherTest {
     Thread.sleep(1500);
 
     assertTrue(worker.hasRun(), "Worker was not run");
-    assertNotNull(queue.claim(tester, now, now + timeout),
+    CrudIterator<Task> tasks = queue.tasks();
+    assertTrue(tasks.hasNext(),
         "Task list should still have the task " +
-        "as the scheduler was shutdown before the run was complete");
+            "as the scheduler was shutdown before the run was complete");
     log.debug("TEST TASK RUN SHUTDOWN DONE");
   }
 
@@ -122,7 +124,7 @@ public class TaskDispatcherTest {
   }
 
   @Test(groups = "slowTest")
-  public void testTwoTaskOneFailNoRun() throws QueueException, InterruptedException {
+  public void testTwoTaskOneFailNoRun() throws QueueException, InterruptedException, CrudException {
     CrudTaskQueue queue = getQueue();
     List<TaskWorker> workers = Lists.newArrayList();
     workers.add(new TestTaskWorker());
@@ -142,16 +144,18 @@ public class TaskDispatcherTest {
 
     assertTrue(((TestTaskWorker) workers.get(0)).hasRun(), "Worker 0 was not run");
     assertTrue(((TestTaskWorker) workers.get(1)).hasRun(), "Worker 1 was not run");
-    assertNotNull(queue.claim(tester, now, timeout),
+    CrudIterator<Task> tasks = queue.tasks();
+    assertTrue(tasks.hasNext(),
         "Queue should not have been emptied");
+    tasks.close();
   }
 
   @Test(groups = "slowTest")
   public void testFutureTaskNotRun()
-      throws QueueException, InterruptedException {
+      throws QueueException, InterruptedException, CrudException {
     CrudTaskQueue queue = getQueue();
     // remove the current test task
-    queue.claim(tester, now, timeout);
+    queue.remove(queue.tasks().next());
 
     Task future = queue.push(Task.newBuilder()
         .setPath("/")
@@ -175,8 +179,11 @@ public class TaskDispatcherTest {
 
     assertFalse(((TestTaskWorker) workers.get(0)).hasRun(),
         "Worker 0 was not run");
-    assertNotNull(queue.claim(tester, now, timeout),
-        "Queue should not have been emptied");
+    CrudIterator<Task> tasks = queue.tasks();
+    assertTrue(tasks.hasNext(), "Queue should not have been emptied");
+    tasks.next();
+    assertFalse(tasks.hasNext(), "Queue should have only had one item");
+    tasks.close();
   }
 
   @Test(groups = "slowTest")

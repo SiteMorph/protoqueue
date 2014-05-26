@@ -1,8 +1,10 @@
 package net.sitemorph.queue;
 
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertFalse;
 
+import net.sitemorph.protostore.CrudException;
+import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.protostore.CrudStore;
 import net.sitemorph.protostore.InMemoryStore;
 import net.sitemorph.protostore.SortOrder;
@@ -39,9 +41,11 @@ public class TestTaskQueue {
   }
 
   @Test(dataProvider = "taskQueueImplementations")
-  public void testQueueSortOrder(TaskQueue queue) throws QueueException {
+  public void testQueueSortOrder(TaskQueue queue) throws QueueException, CrudException {
     // empty the queue
-    while (null != queue.claim(tester, now, timeout)) {
+    CrudIterator<Task> tasks = queue.tasks();
+    while (tasks.hasNext()) {
+      queue.remove(tasks.next());
     }
     long firstTime = System.currentTimeMillis();
     long lastTime = firstTime + 10000;
@@ -61,13 +65,14 @@ public class TestTaskQueue {
         .setUrn("b"));
     now = lastTime + 1000;
     timeout = now + 10000;
-    Task first = queue.claim(tester, now, timeout);
+    tasks = queue.tasks();
+    Task first = tasks.next();
     assertEquals(first.getRunTime(), firstTime, "Expected earliest task first");
-    Task second = queue.claim(tester, now, timeout);
+    Task second = tasks.next();
     assertEquals(second.getRunTime(), middleTime, "Expected middle tassk time " +
         "second");
-    Task third = queue.claim(tester, now, timeout);
+    Task third = tasks.next();
     assertEquals(third.getRunTime(), lastTime, "Expected last time last");
-    assertNull(queue.claim(tester, now, timeout), "Expected an empty queue");
+    assertFalse(tasks.hasNext(), "Expected an empty queue");
   }
 }

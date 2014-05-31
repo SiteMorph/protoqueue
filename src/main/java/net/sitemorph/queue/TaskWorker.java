@@ -15,15 +15,18 @@ import net.sitemorph.queue.Message.Task;
  * 3) run is called.
  * 3.1) The task may be stopped at any time. If stopped goes to stop state.
  *    Tasks that can't be interrupted may be terminated.
- * 3.2) The task calls done on the dispatcher passing it's self.
- * 4) exit status of all tasks run is inspected and if all succeeded rest.
+ * 4) exit status of all tasks run is inspected and if all succeeded rest. If
+ *    any task in the task set fails stop can be called to recover after the
+ *    run is complete and the task will be run again.
  *
  * Depending on the state of the queue the task worker may be called twice for
  * the same task. Although this is theoretically possible it is unlikely to
- * happen often. This change in semantics is a relaxation from the 1.x api that
- * attempted to use undo as a 'roll back'. It is clear though that there will
- * always be a race condition. Therefore, tasks should be implemented to be
+ * happen often. Therefore, tasks should be implemented to be
  * idempotent or use a different mechanism like an external lock.
+ *
+ * Once all registered task workers have completed their work the resulting
+ * task is returned and removed from the queue. This provides at least once
+ * semantics for tasks.
  *
  * Note that if the same task worker instance is registered multiple times it
  * could be called concurrently so it is up to the implementer to resolve.

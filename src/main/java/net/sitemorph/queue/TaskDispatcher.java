@@ -1,7 +1,5 @@
 package net.sitemorph.queue;
 
-import static org.joda.time.DateTime.now;
-
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.queue.Message.Task;
@@ -21,6 +19,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+
+import static org.joda.time.DateTime.now;
 
 /**
  * Task dispatcher is used to manage long running and future tasks.
@@ -99,13 +99,9 @@ public class TaskDispatcher implements Runnable {
         task = queue.claim(identity, time, time + taskTimeout + sleep);
         // if empty or future then sleep
         if (null == task) {
-
           long alarm = time + sleep;
-
           // figure out the next task time
           CrudIterator<Task> tasks = queue.tasks();
-          Task nextTask = null;
-
           while (tasks.hasNext()) {
             Task candidate = tasks.next();
             if (candidate.getRunTime() > alarm) {
@@ -168,29 +164,28 @@ public class TaskDispatcher implements Runnable {
 
         // restore the task queue
         queue = taskQueueFactory.getTaskQueue();
-        // if all done check status
-        if (run && ok && successful(taskSet)) {
+        if (successful(taskSet)) {
           log.debug("TaskDispatcher {} Task Set Successful. De-queueing Task {}",
               task.getPath(), task.getUrn());
           try {
             queue.remove(task);
-            taskQueueFactory.returnTaskQueue(queue);
           } catch (StaleClaimException e) {
             ok = false;
             log.info("Successful task but queue reports task as stale so " +
                 "cancelling");
           }
+        } else {
+          log.debug("Task set not successful. Calling stop / rollback.");
+          ok = false;
         }
         if (!ok) {
           log.debug("TaskDispatcher Task Set Failed.");
-          queue.release(task);
           cancelTasks(taskSet);
+          queue.release(task);
           taskQueueFactory.returnTaskQueue(queue);
-          synchronized (this) {
-            log.debug("TaskDispatcher waiting after error to prevent " +
-                "immediate rerun of failed tasks");
-            wait(sleep);
-          }
+        } else {
+          log.debug("TaskDispatcher Task Set Successful.");
+          taskQueueFactory.returnTaskQueue(queue);
         }
       } catch (Throwable t) {
         log.error("Task dispatcher encountered unhandled error", t);
@@ -216,26 +211,28 @@ public class TaskDispatcher implements Runnable {
    *
    * @param worker listener
    */
-  public synchronized void deregister(TaskWorker worker) {
+  public void deregister(TaskWorker worker) {
     workers.remove(worker);
   }
 
-  public synchronized Task schedule(Task.Builder update) throws QueueException {
+  public Task schedule(Task.Builder update) throws QueueException {
     TaskQueue queue = taskQueueFactory.getTaskQueue();
     Task result = queue.push(update);
     taskQueueFactory.returnTaskQueue(queue);
     // notify self in case sleeping and task could be started
-    notify();
+    synchronized (this) {
+      notify();
+    }
     return result;
   }
 
-  public synchronized void deschedule(Task task) throws QueueException  {
+  public void deschedule(Task task) throws QueueException  {
     TaskQueue queue = taskQueueFactory.getTaskQueue();
     queue.remove(task);
     taskQueueFactory.returnTaskQueue(queue);
   }
 
-  public synchronized boolean isTaskScheduled(String path)
+  public boolean isTaskScheduled(String path)
       throws QueueException {
     // run over the task queue and ensure that there is a task for this event
     // scheduled
@@ -320,14 +317,11 @@ public class TaskDispatcher implements Runnable {
     }
   }
 
-
-
   public void shutdown() {
     log.debug("TaskDispatcher Shutting Down");
+    run = false;
     synchronized (this) {
-      run = false;
       // notify in case task dispatcher has 'cleanup' left to do for completed
-      // tasks
       notify();
     }
     try {
@@ -336,7 +330,6 @@ public class TaskDispatcher implements Runnable {
       log.error("Task dispatcher shutdown grace period interrupted");
     }
     executorService.shutdown();
-
   }
 
   /**

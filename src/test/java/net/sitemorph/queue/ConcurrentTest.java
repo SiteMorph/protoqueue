@@ -1,9 +1,5 @@
 package net.sitemorph.queue;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
-
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.protostore.CrudStore;
@@ -23,6 +19,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 
 /**
  * Concurrent task handler test which runs multiple schedulers which all claim
@@ -56,6 +56,10 @@ public class ConcurrentTest {
     }
     error.clear();
     last = null;
+    CrudIterator<Task> tasks = store.read(Task.newBuilder());
+    while (tasks.hasNext()) {
+      store.delete(tasks.next());
+    }
     long now = System.currentTimeMillis();
     for (Map.Entry<String, AtomicInteger> entry : counters.entrySet()) {
       store.create(Task.newBuilder()
@@ -73,8 +77,8 @@ public class ConcurrentTest {
 
     TaskDispatcher dispatcher = TaskDispatcher.newBuilder()
         .setIdentity(UUID.randomUUID())
-        .setSleepInterval(10)
-        .setTaskTimeout(100)
+        .setSleepInterval(100)
+        .setTaskTimeout(1000)
         .setWorkerPoolSize(1)
         .setUncaughtExceptionHandler(new UncaughtExceptionHandler() {
           @Override
@@ -108,12 +112,16 @@ public class ConcurrentTest {
     });
     thread.start();
     long start = System.currentTimeMillis();
-    while (0 == counters.get(last).intValue()) {
+
+    while (true) {
       int sum = 0;
       for (Map.Entry<String, AtomicInteger> entry : counters.entrySet()) {
         sum += entry.getValue().intValue();
       }
       CrudIterator<Task> tasks = store.read(Task.newBuilder());
+      if (!tasks.hasNext()) {
+        break;
+      }
       int claims = 0;
       while (tasks.hasNext()) {
         if (tasks.next().hasClaim()) {

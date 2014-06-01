@@ -101,6 +101,7 @@ public class TaskDispatcher implements Runnable {
 
         // if empty or future then sleep
         if (null == task) {
+          log.debug("No task returned. Sleeping for {}", sleep);
           long alarm = time + sleep;
           // figure out the next task time
           CrudIterator<Task> tasks = queue.tasks();
@@ -111,24 +112,30 @@ public class TaskDispatcher implements Runnable {
             }
             if (candidate.hasClaimTimeout() &&
                 candidate.getClaimTimeout() < alarm) {
+              log.debug("Found a claim timeout before alarm time");
               alarm = candidate.getClaimTimeout();
             }
             if (candidate.getRunTime() < alarm) {
+              log.debug("Found task time {} before alarm time {}",
+                  candidate.getRunTime(), alarm);
               alarm = candidate.getRunTime();
             }
           }
           tasks.close();
-          long period = time - alarm;
+          long period = alarm - time;
           if (1 > period) {
             period = 1;
           }
           taskQueueFactory.returnTaskQueue(queue);
           queue = null;
           try {
-            log.debug("TaskDispatcher out of tasks. Sleeping");
+            log.debug("TaskDispatcher out of tasks. Sleeping for {}", period);
+            long beginSleep = System.currentTimeMillis();
             synchronized (this) {
               wait(period);
             }
+            long endSleep = System.currentTimeMillis();
+            log.debug("TaskDispatcher Slept for {}", (endSleep - beginSleep));
           } catch (InterruptedException e) {
             log.info("TaskDispatcher interrupted while waiting for more tasks");
           }

@@ -1,5 +1,9 @@
 package net.sitemorph.queue;
 
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.protostore.CrudStore;
@@ -20,10 +24,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
-
 /**
  * Concurrent task handler test which runs multiple schedulers which all claim
  * and work on tasks.
@@ -36,7 +36,7 @@ public class ConcurrentTest {
       Maps.newConcurrentMap();
   private static volatile Set<String> error = Sets.newConcurrentHashSet();
   private static volatile String last;
-  private static final int TASK_COUNT = 10000;
+  private static final int TASK_COUNT = 1000;
   private static final int TASK_SLEEP = 10;
   private static final double ERROR_RATE = 0.1;
   final CrudStore<Task> store = new Builder<Task>()
@@ -123,16 +123,27 @@ public class ConcurrentTest {
         break;
       }
       int claims = 0;
+      int remaining = 0;
+      Task first = null;
       while (tasks.hasNext()) {
-        if (tasks.next().hasClaim()) {
+        Task task = tasks.next();
+        if (null == first) {
+          first = task;
+        }
+        remaining++;
+        if (task.hasClaim()) {
           claims++;
         }
       }
       tasks.close();
+      log.info("Next task {} due in {} and timeout in {}",
+          (null != first? first.getUrn() : null),
+          (null != first? first.getRunTime() - System.currentTimeMillis() : null),
+          (null != first && first.hasClaimTimeout()?
+              first.getClaimTimeout() - System.currentTimeMillis() : null));
       log.info("Sleeping while waiting for counter updates. Currently at {} " +
-          "with {} claims.",
-          sum,
-          claims);
+          "with {} claims against {} tasks.",
+          sum,  claims, remaining);
       Thread.sleep(1000);
     }
     long end = System.currentTimeMillis();
@@ -285,8 +296,8 @@ public class ConcurrentTest {
     for (int i = 0; i < count; i++) {
       TaskDispatcher dispatcher = TaskDispatcher.newBuilder()
           .setIdentity(UUID.randomUUID())
-          .setSleepInterval(10)
-          .setTaskTimeout(10000)
+          .setSleepInterval(1000)
+          .setTaskTimeout(1000)
           .setWorkerPoolSize(1)
           .setUncaughtExceptionHandler(new UncaughtExceptionHandler() {
             @Override
@@ -331,12 +342,15 @@ public class ConcurrentTest {
     long start = System.currentTimeMillis();
     log.info("Started dispatchers.");
 
-    while (0 == counters.get(last).intValue()) {
+    while (true) {
       int sum = 0;
       for (Map.Entry<String, AtomicInteger> entry : counters.entrySet()) {
         sum += entry.getValue().intValue();
       }
       CrudIterator<Task> tasks = store.read(Task.newBuilder());
+      if (!tasks.hasNext()) {
+        break;
+      }
       int claims = 0;
       while (tasks.hasNext()) {
         if (tasks.next().hasClaim()) {

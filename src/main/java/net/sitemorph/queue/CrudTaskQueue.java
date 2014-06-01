@@ -6,11 +6,14 @@ import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.protostore.CrudStore;
 import net.sitemorph.protostore.DbUrnFieldStore;
+import net.sitemorph.protostore.MessageNotFound;
 import net.sitemorph.protostore.MessageVectorException;
 import net.sitemorph.protostore.SortOrder;
 import net.sitemorph.queue.Message.Task;
 
 import org.joda.time.DateTimeZone;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -27,6 +30,7 @@ public class CrudTaskQueue implements TaskQueue {
 
   private CrudStore<Task> taskStore;
   private Connection connection;
+  private Logger log = LoggerFactory.getLogger(getClass());
 
   private CrudTaskQueue(CrudStore<Task> taskStore, Connection connection) {
     this.taskStore = taskStore;
@@ -55,29 +59,47 @@ public class CrudTaskQueue implements TaskQueue {
       CrudIterator<Task> tasks = taskStore.read(Task.newBuilder());
       while (tasks.hasNext()) {
         result = tasks.next();
-        // If the task is in the future then return
-        if (isFutureTask(result)) {
-          result = null;
-          break;
-        }
-        if (result.hasClaim()) {
-          if (now < result.getClaimTimeout()) {
+        try {
+          // If the task is in the future then return
+          if (isFutureTask(result)) {
+            log.debug("{} Ran out of overdue tasks", identity);
             result = null;
-          } else {
-            // the claim is timed out
             break;
           }
-        } else {
-          // we have found a claim
-          break;
+          if (result.hasClaim()) {
+            if (now < result.getClaimTimeout()) {
+              log.debug("{} current candidate                  {} is claimed but not timed out",
+                  identity, result.getUrn());
+              result = null;
+            } else {
+              log.debug("{} attempting to claim timed out task {}",
+                  identity, result.getUrn());
+              result = taskStore.update(result.toBuilder()
+                  .setClaim(identity.toString())
+                  .setClaimTimeout(claimTimeout));
+              log.debug("{} successfully claimed task          {}",
+                  identity, result.getUrn());
+              break;
+            }
+          } else {
+            log.debug("{} attempting to claim task           {}",
+                identity, result.getUrn());
+            result = taskStore.update(result.toBuilder()
+                .setClaim(identity.toString())
+                .setClaimTimeout(claimTimeout));
+            break;
+          }
+        } catch (MessageVectorException e) {
+          log.debug("{} attempted claim of task             {} failed due to contention. " +
+              "Deferring", identity, result);
+          result = null;
+        } catch (MessageNotFound e) {
+          log.debug("{} attempted claim of task             {} failed due to task already gone." +
+              "Continuing", identity, result);
+          result = null;
         }
       }
       tasks.close();
-      if (null != result) {
-        result = taskStore.update(result.toBuilder()
-            .setClaim(identity.toString())
-            .setClaimTimeout(claimTimeout));
-      }
       return result;
     } catch (MessageVectorException e) {
       throw new StaleClaimException("Claim attempted when already claimed.", e);
@@ -100,8 +122,10 @@ public class CrudTaskQueue implements TaskQueue {
           .clearClaimTimeout());
     } catch (MessageVectorException e) {
       throw new StaleClaimException("release attempt when claim out of date", e);
+    } catch (MessageNotFound e) {
+      throw new StaleClaimException("Storage error releasing task", e);
     } catch (CrudException e) {
-      throw new QueueException("Storage error releasing task", e);
+      throw new QueueException("Queue Storage Error", e);
     }
   }
 

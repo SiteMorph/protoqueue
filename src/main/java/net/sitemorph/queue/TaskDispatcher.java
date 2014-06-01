@@ -1,5 +1,7 @@
 package net.sitemorph.queue;
 
+import static org.joda.time.DateTime.now;
+
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.queue.Message.Task;
@@ -19,8 +21,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-
-import static org.joda.time.DateTime.now;
 
 /**
  * Task dispatcher is used to manage long running and future tasks.
@@ -96,7 +96,9 @@ public class TaskDispatcher implements Runnable {
       try {
         Task task;
         queue = taskQueueFactory.getTaskQueue();
+
         task = queue.claim(identity, time, time + taskTimeout + sleep);
+
         // if empty or future then sleep
         if (null == task) {
           long alarm = time + sleep;
@@ -164,7 +166,7 @@ public class TaskDispatcher implements Runnable {
 
         // restore the task queue
         queue = taskQueueFactory.getTaskQueue();
-        if (successful(taskSet)) {
+        if (ok && successful(taskSet)) {
           log.debug("TaskDispatcher {} Task Set Successful. De-queueing Task {}",
               task.getPath(), task.getUrn());
           try {
@@ -173,15 +175,22 @@ public class TaskDispatcher implements Runnable {
             ok = false;
             log.info("Successful task but queue reports task as stale so " +
                 "cancelling");
+          } catch (QueueException e) {
+            ok = false;
+            log.info("Successful task but queue reports that the task has " +
+                "been dequeued by another dispatcher");
           }
         } else {
           log.debug("Task set not successful. Calling stop / rollback.");
-          ok = false;
         }
         if (!ok) {
           log.debug("TaskDispatcher Task Set Failed.");
           cancelTasks(taskSet);
-          queue.release(task);
+          try {
+            queue.release(task);
+          } catch (StaleClaimException e) {
+            log.info("Attempt to release task " + task.getUrn() + " failed");
+          }
           taskQueueFactory.returnTaskQueue(queue);
         } else {
           log.debug("TaskDispatcher Task Set Successful.");

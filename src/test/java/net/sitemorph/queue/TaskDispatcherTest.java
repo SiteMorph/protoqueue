@@ -1,9 +1,5 @@
 package net.sitemorph.queue;
 
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
-
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.protostore.CrudStore;
@@ -18,6 +14,10 @@ import org.testng.annotations.Test;
 
 import java.util.List;
 import java.util.UUID;
+
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 /**
  * Tests for the task dispatcher.
@@ -90,7 +90,7 @@ public class TaskDispatcherTest {
 
     Thread.sleep(1500);
 
-    assertTrue(worker.hasRun(), "Worker was not run");
+    assertTrue(worker.hasRun(), "Worker was run");
     CrudIterator<Task> tasks = queue.tasks();
     assertTrue(tasks.hasNext(),
         "Task list should still have the task " +

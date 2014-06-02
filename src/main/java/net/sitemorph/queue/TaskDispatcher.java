@@ -1,7 +1,5 @@
 package net.sitemorph.queue;
 
-import static org.joda.time.DateTime.now;
-
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.queue.Message.Task;
@@ -21,6 +19,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+
+import static org.joda.time.DateTime.now;
 
 /**
  * Task dispatcher is used to manage long running and future tasks.
@@ -173,7 +173,7 @@ public class TaskDispatcher implements Runnable {
 
         // restore the task queue
         queue = taskQueueFactory.getTaskQueue();
-        if (ok && successful(taskSet)) {
+        if (run && ok && successful(taskSet)) {
           log.debug("TaskDispatcher {} Task Set Successful. De-queueing Task {}",
               task.getPath(), task.getUrn());
           try {
@@ -189,6 +189,7 @@ public class TaskDispatcher implements Runnable {
           }
         } else {
           log.debug("Task set not successful. Calling stop / rollback.");
+          ok = false;
         }
         if (!ok) {
           log.debug("TaskDispatcher Task Set Failed.");

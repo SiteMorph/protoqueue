@@ -1,7 +1,5 @@
 package net.sitemorph.queue;
 
-import static org.joda.time.DateTime.now;
-
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.protostore.CrudStore;
@@ -18,6 +16,8 @@ import org.slf4j.LoggerFactory;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.UUID;
+
+import static org.joda.time.DateTime.now;
 
 /**
  * The task queue builder constructs a task queue from a set of configuration
@@ -182,6 +182,7 @@ public class CrudTaskQueue implements TaskQueue {
     try {
       if (null != connection && !connection.isClosed()) {
         connection.close();
+        connection = null;
       }
     } catch (SQLException e) {
       throw new QueueException("Error closing SQL connection", e);

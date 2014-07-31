@@ -1,7 +1,5 @@
 package net.sitemorph.queue;
 
-import static org.joda.time.DateTime.now;
-
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.queue.Message.Task;
@@ -21,6 +19,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+
+import static org.joda.time.DateTime.now;
 
 /**
  * Task dispatcher is used to manage long running and future tasks.
@@ -59,6 +59,7 @@ public class TaskDispatcher implements Runnable {
   private static final long TASK_TIMEOUT_PERIOD = 1000;
   private static final long ONE_DAY = 24 * 60 * 60000;
   private static final long SHUTDOWN_GRACE_PERIOD = 1000;
+  private static final long UNHANDLED_ERROR_SLEEP = 10000;
   private Logger log = LoggerFactory.getLogger(getClass());
   private ExecutorService executorService;
   private volatile boolean run = true;
@@ -208,13 +209,13 @@ public class TaskDispatcher implements Runnable {
         log.error("Task dispatcher encountered unhandled error", t);
         try {
           taskQueueFactory.returnTaskQueue(queue);
-        } catch (QueueException e) {
-          log.error("Queue error releasing task queue in task dispatcher");
+        } catch (Throwable e) {
+          log.error("Queue error releasing task queue in task dispatcher", e);
         }
         log.info("Task dispatcher sleeping to await system recovery");
         try {
           synchronized (this) {
-            wait(sleep);
+            wait(UNHANDLED_ERROR_SLEEP);
           }
         } catch (InterruptedException e) {
           log.info("Task dispatcher interrupted while in error sleep", e);

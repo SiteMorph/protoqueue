@@ -55,16 +55,20 @@ public class TaskDispatcherTest {
     return builder.build();
   }
 
+  CrudTaskQueue getEmptyQueue() {
+      CrudStore<Task> taskStore = new InMemoryStore.Builder<Task>()
+          .setPrototype(Task.newBuilder())
+          .setUrnField("urn")
+          .setVectorField("vector")
+          .addIndexField("runTime")
+          .addIndexField("path")
+          .setSortOrder("runTime", SortOrder.ASCENDING)
+          .build();
+      CrudTaskQueue queue = CrudTaskQueue.fromCrudStore(taskStore);
+     return queue;
+  }
   CrudTaskQueue getQueue() throws QueueException {
-    CrudStore<Task> taskStore = new InMemoryStore.Builder<Task>()
-        .setPrototype(Task.newBuilder())
-        .setUrnField("urn")
-        .setVectorField("vector")
-        .addIndexField("runTime")
-        .addIndexField("path")
-        .setSortOrder("runTime", SortOrder.ASCENDING)
-        .build();
-    CrudTaskQueue queue = CrudTaskQueue.fromCrudStore(taskStore);
+    CrudTaskQueue queue = getEmptyQueue();
     queue.push(Task.newBuilder()
         .setPath("/")
         .setRunTime(System.currentTimeMillis())
@@ -153,9 +157,7 @@ public class TaskDispatcherTest {
   @Test(groups = "slowTest")
   public void testFutureTaskNotRun()
       throws QueueException, InterruptedException, CrudException {
-    CrudTaskQueue queue = getQueue();
-    // remove the current test task
-    queue.remove(queue.tasks().next());
+    CrudTaskQueue queue = getEmptyQueue();
 
     Task future = queue.push(Task.newBuilder()
         .setPath("/")
@@ -171,7 +173,7 @@ public class TaskDispatcherTest {
     Thread thread = new Thread(dispatcher);
     thread.start();
 
-    Thread.sleep(1500);
+    Thread.sleep(1000);
 
     log.debug("Test sleeping to wait for shutdown");
     dispatcher.shutdown();

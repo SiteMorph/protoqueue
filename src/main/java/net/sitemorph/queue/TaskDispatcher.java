@@ -59,7 +59,8 @@ public class TaskDispatcher implements Runnable {
   private static final long TASK_TIMEOUT_PERIOD = 1000;
   private static final long ONE_DAY = 24 * 60 * 60000;
   private static final long SHUTDOWN_GRACE_PERIOD = 1000;
-  private static final long UNHANDLED_ERROR_SLEEP = 10000;
+
+  private long unhandledErrorSleep = 10000;
   private Logger log = LoggerFactory.getLogger(getClass());
   private ExecutorService executorService;
   private volatile boolean run = true;
@@ -68,6 +69,7 @@ public class TaskDispatcher implements Runnable {
   private final List<TaskWorker> workers;
   private long taskTimeout = ONE_DAY;
   private volatile UUID identity;
+  private long minimumSleep = 100;
 
   private TaskDispatcher() {
     workers = Lists.newArrayList();
@@ -103,29 +105,11 @@ public class TaskDispatcher implements Runnable {
         // if empty or future then sleep
         if (null == task) {
           log.debug("No task returned. Sleeping for {}", sleep);
-          long alarm = time + sleep;
-          // figure out the next task time
-          CrudIterator<Task> tasks = queue.tasks();
-          while (tasks.hasNext()) {
-            Task candidate = tasks.next();
-            if (candidate.getRunTime() > alarm) {
-              break; // task is after next wake up
-            }
-            if (candidate.hasClaimTimeout() &&
-                candidate.getClaimTimeout() < alarm) {
-              log.debug("Found a claim timeout before alarm time");
-              alarm = candidate.getClaimTimeout();
-            }
-            if (candidate.getRunTime() < alarm) {
-              log.debug("Found task time {} before alarm time {}",
-                  candidate.getRunTime(), alarm);
-              alarm = candidate.getRunTime();
-            }
-          }
-          tasks.close();
+          long alarm = nextAlarmTime(queue, time, sleep);
+
           long period = alarm - time;
-          if (1 > period) {
-            period = 1;
+          if (minimumSleep > period) {
+            period = minimumSleep;
           }
           taskQueueFactory.returnTaskQueue(queue);
           queue = null;
@@ -140,7 +124,10 @@ public class TaskDispatcher implements Runnable {
           } catch (InterruptedException e) {
             log.info("TaskDispatcher interrupted while waiting for more tasks");
           }
+          // Must restart cycle
           continue;
+        } else {
+          log.debug("Task returned by claim {}", task.getUrn());
         }
         // return the task queue while the worker is at it...
         taskQueueFactory.returnTaskQueue(queue);
@@ -148,7 +135,6 @@ public class TaskDispatcher implements Runnable {
         // build the set of workers up
         List<Callable<Task>> running = Lists.newArrayList();
         List<TaskWorker> taskSet = Lists.newArrayList();
-
         for (TaskWorker worker : workers) {
           if (worker.isRelevant(task)) {
             worker.reset();
@@ -215,13 +201,42 @@ public class TaskDispatcher implements Runnable {
         log.info("Task dispatcher sleeping to await system recovery");
         try {
           synchronized (this) {
-            wait(UNHANDLED_ERROR_SLEEP);
+            wait(unhandledErrorSleep);
           }
         } catch (InterruptedException e) {
           log.info("Task dispatcher interrupted while in error sleep", e);
         }
       }
     }
+  }
+
+  private long nextAlarmTime(TaskQueue queue, long currentTime, long sleep)
+      throws QueueException, CrudException {
+    long alarm =  currentTime + sleep;
+    // figure out the next task time
+    CrudIterator<Task> tasks = queue.tasks();
+    while (tasks.hasNext()) {
+      Task candidate = tasks.next();
+      if (candidate.getRunTime() > (currentTime + sleep)) {
+        // already after alarm
+        break;
+      }
+      if (candidate.hasClaim() && candidate.hasClaimTimeout()) {
+        if (candidate.getClaimTimeout() < alarm) {
+          log.debug("Found a claim timeout before alarm time");
+          alarm = candidate.getClaimTimeout();
+        }
+      } else if (candidate.getRunTime() < alarm) {
+        log.debug("Found task time {} before alarm time {}",
+            candidate.getRunTime(), alarm);
+        alarm = candidate.getRunTime();
+      }
+    }
+    tasks.close();
+    if (alarm < currentTime) {
+      alarm = currentTime;
+    }
+    return alarm;
   }
 
   /**
@@ -444,6 +459,33 @@ public class TaskDispatcher implements Runnable {
      */
     public Builder setTaskTimeout(long timeout) {
       dispatcher.taskTimeout = timeout;
+      return this;
+    }
+
+    /**
+     * Set the minimum sleep time to be used when a claim will be overdue but
+     * you want to give a minimum time before this thread will restart e.g. 10
+     * milliseconds.
+     *
+     * @param minimumSleep used when the thread is sleeping due to lack of work.
+     * Must be positive as 0 implies for ever.
+     */
+    public Builder setMinimumSleep(long minimumSleep) {
+      if( 0 >= minimumSleep) {
+        throw new IllegalArgumentException("Minimum sleep cycle must be  >= 1");
+      }
+      dispatcher.minimumSleep = minimumSleep;
+      return this;
+    }
+
+    /**
+     * Set the sleep time to use on an unhandled error which gives the
+     * environment time to recover. E.g. 10000 or 60000
+     *
+     * @param unhandledErrorSleep
+     */
+    public Builder setUnhandledErrorSleep(long unhandledErrorSleep) {
+      dispatcher.unhandledErrorSleep = unhandledErrorSleep;
       return this;
     }
 

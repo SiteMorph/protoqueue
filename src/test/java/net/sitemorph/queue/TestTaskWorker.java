@@ -13,13 +13,13 @@ import org.slf4j.LoggerFactory;
 public class TestTaskWorker implements TaskWorker {
 
   private Logger log = LoggerFactory.getLogger(getClass());
-  private boolean isReset = false;
-  private Task task = null;
-  private boolean isStopped = false;
-  private boolean hasUndone = false;
-  private boolean hasRun = false;
+  private volatile boolean isReset = false;
+  private volatile Task task = null;
+  private volatile boolean isStopped = false;
+  private volatile boolean hasUndone = false;
+  private volatile boolean hasRun = false;
   private volatile TaskDispatcher dispatcher;
-  private TaskStatus overrideStatus = null;
+  private volatile TaskStatus overrideStatus = null;
 
   @Override
   public void reset() {

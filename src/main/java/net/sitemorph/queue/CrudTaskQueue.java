@@ -54,52 +54,60 @@ public class CrudTaskQueue implements TaskQueue {
    */
   @Override
   public Task claim(UUID identity, long now, long claimTimeout) throws QueueException {
-    Task result = null;
+
+    Task claim = null;
+    Task reclaim = null;
     try {
       CrudIterator<Task> tasks = taskStore.read(Task.newBuilder());
       while (tasks.hasNext()) {
-        result = tasks.next();
-        try {
-          // If the task is in the future then return
-          if (isFutureTask(result)) {
-            log.debug("{} Ran out of overdue tasks", identity);
-            result = null;
-            break;
+        Task candidate = tasks.next();
+        // If the task is in the future then return
+        if (isFutureTask(candidate)) {
+          log.debug("{} Ran out of overdue tasks", identity);
+          break;
+        }
+
+        if (candidate.hasClaim()) {
+          if (now > candidate.getClaimTimeout() && null == reclaim) {
+            log.debug("{} attempting to claim timed out task {}",
+                identity, candidate.getUrn());
+              reclaim = candidate;
           }
-          if (result.hasClaim()) {
-            if (now < result.getClaimTimeout()) {
-              log.debug("{} current candidate                  {} is claimed but not timed out",
-                  identity, result.getUrn());
-              result = null;
-            } else {
-              log.debug("{} attempting to claim timed out task {}",
-                  identity, result.getUrn());
-              result = taskStore.update(result.toBuilder()
-                  .setClaim(identity.toString())
-                  .setClaimTimeout(claimTimeout));
-              log.debug("{} successfully claimed task          {}",
-                  identity, result.getUrn());
-              break;
-            }
-          } else {
-            log.debug("{} attempting to claim task           {}",
-                identity, result.getUrn());
-            result = taskStore.update(result.toBuilder()
-                .setClaim(identity.toString())
-                .setClaimTimeout(claimTimeout));
-            break;
-          }
-        } catch (MessageVectorException e) {
-          log.debug("{} attempted claim of task             {} failed due to contention. " +
-              "Deferring", identity, result);
-          result = null;
-        } catch (MessageNotFound e) {
-          log.debug("{} attempted claim of task             {} failed due to task already gone." +
-              "Continuing", identity, result);
-          result = null;
+        } else {
+          log.debug("{} attempting to claim task           {}",
+              identity, candidate.getUrn());
+          claim = candidate;
+          break;
         }
       }
       tasks.close();
+
+      Task result = null;
+      try {
+        if (null == claim) {
+          if (null != reclaim) {
+            result = taskStore.update(reclaim.toBuilder()
+                .setClaim(identity.toString())
+                .setClaimTimeout(claimTimeout));
+            log.debug("{} successfully claimed task          {}",
+                identity, result.getUrn());
+          }
+        } else {
+          result = taskStore.update(claim.toBuilder()
+              .setClaim(identity.toString())
+              .setClaimTimeout(claimTimeout));
+          log.debug(  "{} claiming claimable future task     {}",
+              identity, result.getUrn());
+        }
+      } catch (MessageVectorException e) {
+        log.debug("{} attempted claim of task             {} failed due to contention. " +
+            "Deferring", identity, result);
+        result = null;
+      } catch (MessageNotFound e) {
+        log.debug("{} attempted claim of task             {} failed due to task already gone." +
+            "Continuing", identity, result);
+        result = null;
+      }
       return result;
     } catch (MessageVectorException e) {
       throw new StaleClaimException("Claim attempted when already claimed.", e);

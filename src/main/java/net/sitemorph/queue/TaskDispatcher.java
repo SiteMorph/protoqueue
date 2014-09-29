@@ -482,7 +482,7 @@ public class TaskDispatcher implements Runnable {
      * Must be positive as 0 implies for ever.
      */
     public Builder setMinimumSleep(long minimumSleep) {
-      if( 0 >= minimumSleep) {
+      if (0 >= minimumSleep) {
         throw new IllegalArgumentException("Minimum sleep cycle must be  >= 1");
       }
       dispatcher.minimumSleep = minimumSleep;

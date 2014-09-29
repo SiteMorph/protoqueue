@@ -53,4 +53,4 @@ require logging.
 
 Future Work
 -----------
-Task claims using newer protostore task vector to claim and error on roll back.
+Queue depth alert handler.

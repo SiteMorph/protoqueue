@@ -171,8 +171,12 @@ public class ConcurrentTest {
   public void testTwoOrchestrator() throws InterruptedException, CrudException {
     log.info("TEST TWO ORCHESTRATOR START");
 
+    UUID dispatcherIdentity1 = UUID.randomUUID();
+    UUID dispatcherIdentity2 = UUID.randomUUID();
+    log.info("DISPATCHER 1 : " + dispatcherIdentity1.toString());
+    log.info("DISPATCHER 2 : " + dispatcherIdentity2.toString());
     TaskDispatcher dispatcher1 = TaskDispatcher.newBuilder()
-        .setIdentity(UUID.randomUUID())
+        .setIdentity(dispatcherIdentity1)
         .setSleepInterval(10)
         .setTaskTimeout(100)
         .setWorkerPoolSize(1)
@@ -207,7 +211,7 @@ public class ConcurrentTest {
     });
 
     TaskDispatcher dispatcher2 = TaskDispatcher.newBuilder()
-        .setIdentity(UUID.randomUUID())
+        .setIdentity(dispatcherIdentity2)
         .setSleepInterval(10)
         .setTaskTimeout(100)
         .setWorkerPoolSize(1)
@@ -247,21 +251,13 @@ public class ConcurrentTest {
     long start = System.currentTimeMillis();
     log.info("Started dispatchers.");
 
-    while (0 == counters.get(last).intValue()) {
-      int sum = 0;
-      for (Map.Entry<String, AtomicInteger> entry : counters.entrySet()) {
-        sum += entry.getValue().intValue();
-      }
+    while (true) {
       CrudIterator<Task> tasks = store.read(Task.newBuilder());
-      int claims = 0;
-      while (tasks.hasNext()) {
-        if (tasks.next().hasClaim()) {
-          claims++;
-        }
-      }
+      boolean done = !tasks.hasNext();
       tasks.close();
-      log.info("Sleeping while waiting for counter updates. Currently at {} " +
-          "outstanding with {} claims", sum, claims);
+      if (done) {
+        break;
+      }
       Thread.sleep(1000);
     }
     long end = System.currentTimeMillis();

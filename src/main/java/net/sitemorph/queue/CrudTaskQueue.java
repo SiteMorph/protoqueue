@@ -31,18 +31,33 @@ public class CrudTaskQueue implements TaskQueue {
   private CrudStore<Task> taskStore;
   private Connection connection;
   private Logger log = LoggerFactory.getLogger(getClass());
+  private TaskPicker picker;
 
-  private CrudTaskQueue(CrudStore<Task> taskStore, Connection connection) {
+  private CrudTaskQueue(CrudStore<Task> taskStore, Connection connection,
+      TaskPicker picker) {
     this.taskStore = taskStore;
     this.connection = connection;
+    this.picker = picker;
   }
 
-  private CrudTaskQueue(CrudStore<Task> taskStore) {
+  private CrudTaskQueue(CrudStore<Task> taskStore, TaskPicker picker) {
     this.taskStore = taskStore;
+    this.picker = picker;
   }
 
+  /**
+   * Helper method that uses the default task picker.
+   * @param taskStore to build from.
+   * @return the crud task queue.
+   */
   public static CrudTaskQueue fromCrudStore(CrudStore<Task> taskStore) {
-    return new CrudTaskQueue(taskStore);
+    // TODO(dka) Consider refactoring into a factory the default picker
+    return new CrudTaskQueue(taskStore, new NaieveTaskPicker());
+  }
+
+  public static CrudTaskQueue fromCrudStore(CrudStore<Task> taskStore,
+      TaskPicker picker) {
+    return new CrudTaskQueue(taskStore, picker);
   }
 
   public static Builder newBuilder() {
@@ -54,58 +69,25 @@ public class CrudTaskQueue implements TaskQueue {
    */
   @Override
   public Task claim(UUID identity, long now, long claimTimeout) throws QueueException {
-
-    Task claim = null;
-    Task reclaim = null;
     try {
-      CrudIterator<Task> tasks = taskStore.read(Task.newBuilder());
-      while (tasks.hasNext()) {
-        Task candidate = tasks.next();
-        // If the task is in the future then return
-        if (isFutureTask(candidate)) {
-          log.debug("{} Ran out of overdue tasks", identity);
-          break;
-        }
-
-        if (candidate.hasClaim()) {
-          if (now > candidate.getClaimTimeout() && null == reclaim) {
-            log.debug("{} attempting to claim timed out task {}",
-                identity, candidate.getUrn());
-              reclaim = candidate;
-          }
-        } else {
-          log.debug("{} attempting to claim task           {}",
-              identity, candidate.getUrn());
-          claim = candidate;
-          break;
-        }
+      Task run = picker.pick(now, taskStore);
+      if (null == run) {
+        return null;
       }
-      tasks.close();
-
       Task result = null;
       try {
-        if (null == claim) {
-          if (null != reclaim) {
-            result = taskStore.update(reclaim.toBuilder()
-                .setClaim(identity.toString())
-                .setClaimTimeout(claimTimeout));
-            log.debug("{} successfully claimed task          {}",
-                identity, result.getUrn());
-          }
-        } else {
-          result = taskStore.update(claim.toBuilder()
-              .setClaim(identity.toString())
-              .setClaimTimeout(claimTimeout));
-          log.debug(  "{} claiming claimable future task     {}",
-              identity, result.getUrn());
-        }
+        result = taskStore.update(run.toBuilder()
+            .setClaim(identity.toString())
+            .setClaimTimeout(claimTimeout));
+        log.debug("{} successfully claimed task          {}",
+            identity, result.getUrn());
       } catch (MessageVectorException e) {
         log.debug("{} attempted claim of task             {} failed due to contention. " +
-            "Deferring", identity, result);
+            "Deferring", identity, run);
         result = null;
       } catch (MessageNotFound e) {
         log.debug("{} attempted claim of task             {} failed due to task already gone." +
-            "Continuing", identity, result);
+            "Continuing", identity, run);
         result = null;
       }
       return result;
@@ -114,10 +96,6 @@ public class CrudTaskQueue implements TaskQueue {
     } catch (CrudException e) {
       throw new QueueException("Storage error claiming from queue", e);
     }
-  }
-
-  private boolean isFutureTask(Task task) {
-    return now(DateTimeZone.UTC).isBefore(task.getRunTime());
   }
 
   /**
@@ -203,6 +181,7 @@ public class CrudTaskQueue implements TaskQueue {
   public static class Builder {
 
     private Connection connection;
+    private TaskPicker picker = null;
 
     private Builder() {
       taskStore = new DbUrnFieldStore.Builder<Task>();
@@ -233,6 +212,16 @@ public class CrudTaskQueue implements TaskQueue {
     }
 
     /**
+     * Override the default naive task picker.
+     *
+     * @param picker new task picker
+     */
+    public Builder setTaskPicker(TaskPicker picker) {
+      this.picker = picker;
+      return this;
+    }
+
+    /**
      * construct teh task queue.
      * @return the task queue
      * @throws QueueException on connector error or table and field name error
@@ -246,7 +235,10 @@ public class CrudTaskQueue implements TaskQueue {
             .setSortOrder("runTime", SortOrder.ASCENDING)
             .setVectorField("vector");
         CrudStore<Task> store = taskStore.build();
-        return new CrudTaskQueue(store, connection);
+        if (null == picker) {
+          picker = new NaieveTaskPicker();
+        }
+        return new CrudTaskQueue(store, connection, picker);
       } catch (CrudException e) {
         throw new QueueException("Error initialising queue", e);
       }

@@ -69,10 +69,12 @@ public class TaskDispatcher implements Runnable {
   private final List<TaskWorker> workers;
   private long taskTimeout = ONE_DAY;
   private volatile UUID identity;
-  private long minimumSleep = 100;
+  private volatile long minimumSleep = 100;
+  private volatile List<QueueWatcher> watchers;
 
   private TaskDispatcher() {
     workers = Lists.newArrayList();
+    watchers = Lists.newArrayList();
   }
 
   @Override
@@ -115,6 +117,9 @@ public class TaskDispatcher implements Runnable {
           queue = null;
           try {
             log.debug("TaskDispatcher out of tasks. Sleeping for {}", period);
+            for (QueueWatcher watcher : watchers) {
+              watcher.dispatcherSleeping(this);
+            }
             long beginSleep = System.currentTimeMillis();
             synchronized (this) {
               wait(period);
@@ -146,6 +151,9 @@ public class TaskDispatcher implements Runnable {
 
         boolean ok = true;
         try {
+          for (QueueWatcher watcher : watchers) {
+            watcher.taskScheduled(task, taskSet, this);
+          }
           executorService.invokeAll(running, taskTimeout, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
           log.error("TaskDispatcher Task set was interrupted", e);
@@ -160,7 +168,7 @@ public class TaskDispatcher implements Runnable {
 
         // restore the task queue
         queue = taskQueueFactory.getTaskQueue();
-        if (run && ok && successful(taskSet)) {
+        if (run && ok && successful(taskSet, task)) {
           log.debug("TaskDispatcher {} Task Set Successful. De-queueing Task {}",
               task.getPath(), task.getUrn());
           try {
@@ -334,9 +342,12 @@ public class TaskDispatcher implements Runnable {
     return scheduled;
   }
 
-  private boolean successful(List<TaskWorker> running) {
+  private boolean successful(List<TaskWorker> running, Task task) {
     for (TaskWorker worker : running) {
       if (!TaskStatus.DONE.equals(worker.getStatus())) {
+        for (QueueWatcher watcher : watchers) {
+          watcher.workerFailed(worker, task, this);
+        }
         return false;
       }
     }
@@ -471,7 +482,7 @@ public class TaskDispatcher implements Runnable {
      * Must be positive as 0 implies for ever.
      */
     public Builder setMinimumSleep(long minimumSleep) {
-      if( 0 >= minimumSleep) {
+      if (0 >= minimumSleep) {
         throw new IllegalArgumentException("Minimum sleep cycle must be  >= 1");
       }
       dispatcher.minimumSleep = minimumSleep;

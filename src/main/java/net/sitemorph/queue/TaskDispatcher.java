@@ -69,7 +69,7 @@ public class TaskDispatcher implements Runnable {
   private final List<TaskWorker> workers;
   private long taskTimeout = ONE_DAY;
   private volatile UUID identity;
-  private long minimumSleep = 100;
+  private volatile long minimumSleep = 100;
   private volatile List<QueueWatcher> watchers;
 
   private TaskDispatcher() {

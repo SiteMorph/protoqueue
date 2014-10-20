@@ -38,7 +38,7 @@
       <dependency>
           <groupId>net.sitemorph.storage</groupId>
           <artifactId>protostore</artifactId>
-          <version>4.0.1</version>
+          <version>4.0.2</version>
       </dependency>
 
       <dependency>

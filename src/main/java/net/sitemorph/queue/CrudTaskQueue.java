@@ -1,10 +1,12 @@
 package net.sitemorph.queue;
 
+import static org.joda.time.DateTime.now;
+
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.protostore.CrudStore;
 import net.sitemorph.protostore.DbUrnFieldStore;
-import net.sitemorph.protostore.MessageNotFound;
+import net.sitemorph.protostore.MessageNotFoundException;
 import net.sitemorph.protostore.MessageVectorException;
 import net.sitemorph.protostore.SortOrder;
 import net.sitemorph.queue.Message.Task;
@@ -16,8 +18,6 @@ import org.slf4j.LoggerFactory;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.UUID;
-
-import static org.joda.time.DateTime.now;
 
 /**
  * The task queue builder constructs a task queue from a set of configuration
@@ -85,7 +85,7 @@ public class CrudTaskQueue implements TaskQueue {
         log.debug("{} attempted claim of task             {} failed due to contention. " +
             "Deferring", identity, run);
         result = null;
-      } catch (MessageNotFound e) {
+      } catch (MessageNotFoundException e) {
         log.debug("{} attempted claim of task             {} failed due to task already gone." +
             "Continuing", identity, run);
         result = null;
@@ -108,7 +108,7 @@ public class CrudTaskQueue implements TaskQueue {
           .clearClaimTimeout());
     } catch (MessageVectorException e) {
       throw new StaleClaimException("release attempt when claim out of date", e);
-    } catch (MessageNotFound e) {
+    } catch (MessageNotFoundException e) {
       throw new StaleClaimException("Storage error releasing task", e);
     } catch (CrudException e) {
       throw new QueueException("Queue Storage Error", e);

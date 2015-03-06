@@ -247,6 +247,10 @@ public class TaskDispatcher implements Runnable {
     return alarm;
   }
 
+  public UUID getIdentity() {
+    return identity;
+  }
+
   /**
    * Remove a task listener from the registered listeners.
    *

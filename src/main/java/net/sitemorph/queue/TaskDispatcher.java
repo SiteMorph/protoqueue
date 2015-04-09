@@ -187,7 +187,7 @@ public class TaskDispatcher implements Runnable {
           ok = false;
         }
         if (!ok) {
-          log.debug("TaskDispatcher Task Set Failed.");
+          log.info("TaskDispatcher Task Set Failed.");
           cancelTasks(taskSet);
           try {
             queue.release(task);

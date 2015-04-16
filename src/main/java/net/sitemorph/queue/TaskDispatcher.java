@@ -132,7 +132,8 @@ public class TaskDispatcher implements Runnable {
           // Must restart cycle
           continue;
         } else {
-          log.debug("Task returned by claim {}", task.getUrn());
+          log.debug("Dispatcher {} Claimed Task {} {}", getIdentity(),
+              task.getUrn(), task.getPath());
         }
         // return the task queue while the worker is at it...
         taskQueueFactory.returnTaskQueue(queue);
@@ -148,6 +149,8 @@ public class TaskDispatcher implements Runnable {
             taskSet.add(worker);
           }
         }
+        log.info("TaskDispatcher {} Claimed Task {} {} Listeners {}", getIdentity(), task.getUrn(),
+            task.getPath(), taskSet.size());
 
         boolean ok = true;
         try {
@@ -169,7 +172,7 @@ public class TaskDispatcher implements Runnable {
         // restore the task queue
         queue = taskQueueFactory.getTaskQueue();
         if (run && ok && successful(taskSet, task)) {
-          log.debug("TaskDispatcher {} Task Set Successful. De-queueing Task {}",
+          log.info("TaskDispatcher {} Task Set Successful. De-queueing Task {}",
               task.getPath(), task.getUrn());
           try {
             queue.remove(task);

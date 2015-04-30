@@ -71,6 +71,7 @@ public class TaskDispatcher implements Runnable {
   private volatile UUID identity;
   private volatile long minimumSleep = 100;
   private volatile List<QueueWatcher> watchers;
+  private volatile Flags flags = null;
 
   private TaskDispatcher() {
     workers = Lists.newArrayList();
@@ -99,6 +100,16 @@ public class TaskDispatcher implements Runnable {
       TaskQueue queue = null;
       long time = now().getMillis();
       try {
+        if (null != flags && flags.isPaused()) {
+          try {
+            log.debug("Sleeping as paused");
+            wait();
+          } catch (InterruptedException e) {
+            log.info("Interrupted while paused");
+          }
+          continue;
+        }
+
         Task task;
         queue = taskQueueFactory.getTaskQueue();
 
@@ -401,6 +412,11 @@ public class TaskDispatcher implements Runnable {
     }
 
     private TaskDispatcher dispatcher;
+
+    public Builder setFlags(Flags flags) {
+      dispatcher.flags = flags;
+      return this;
+    }
 
     /**
      * Set the size of the fixed worker pool. Recommend at least two.

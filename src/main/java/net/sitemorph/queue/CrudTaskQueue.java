@@ -52,7 +52,7 @@ public class CrudTaskQueue implements TaskQueue {
    */
   public static CrudTaskQueue fromCrudStore(CrudStore<Task> taskStore) {
     // TODO(dka) Consider refactoring into a factory the default picker
-    return new CrudTaskQueue(taskStore, new NaieveTaskPicker());
+    return new CrudTaskQueue(taskStore, new NaiveTaskPicker());
   }
 
   public static CrudTaskQueue fromCrudStore(CrudStore<Task> taskStore,
@@ -236,7 +236,7 @@ public class CrudTaskQueue implements TaskQueue {
             .setVectorField("vector");
         CrudStore<Task> store = taskStore.build();
         if (null == picker) {
-          picker = new NaieveTaskPicker();
+          picker = new NaiveTaskPicker();
         }
         return new CrudTaskQueue(store, connection, picker);
       } catch (CrudException e) {

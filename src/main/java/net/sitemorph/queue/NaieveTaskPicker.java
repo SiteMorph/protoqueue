@@ -42,6 +42,7 @@ public class NaieveTaskPicker implements TaskPicker {
           }
         } else {
           claim = candidate;
+          break;
         }
       }
       tasks.close();

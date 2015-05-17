@@ -103,7 +103,9 @@ public class TaskDispatcher implements Runnable {
         if (null != flags && flags.isPaused()) {
           try {
             log.debug("Sleeping as paused");
-            wait();
+            synchronized (this) {
+              wait(sleep);
+            }
           } catch (InterruptedException e) {
             log.info("Interrupted while paused");
           }

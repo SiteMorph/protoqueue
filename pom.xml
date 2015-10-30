@@ -14,7 +14,8 @@
   <artifactId>protoqueue</artifactId>
   <packaging>jar</packaging>
   <name>SiteMorph Task Queue</name>
-  <version>6.1.6</version>
+  <version>6.2.2</version>
+
 
   <dependencies>
 
@@ -44,14 +45,14 @@
       <dependency>
           <groupId>org.testng</groupId>
           <artifactId>testng</artifactId>
-          <version>6.8.8</version>
+          <version>6.8.21</version>
           <scope>test</scope>
       </dependency>
 
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-log4j12</artifactId>
-      <version>1.7.7</version>
+      <version>1.7.12</version>
       <scope>test</scope>
     </dependency>
 

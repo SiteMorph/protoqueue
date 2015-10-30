@@ -71,6 +71,7 @@ public class TaskDispatcher implements Runnable {
   private volatile UUID identity;
   private volatile long minimumSleep = 100;
   private volatile List<QueueWatcher> watchers;
+  private volatile Flags flags = null;
 
   private TaskDispatcher() {
     workers = Lists.newArrayList();
@@ -99,6 +100,18 @@ public class TaskDispatcher implements Runnable {
       TaskQueue queue = null;
       long time = now().getMillis();
       try {
+        if (null != flags && flags.isPaused()) {
+          try {
+            log.debug("Sleeping as paused");
+            synchronized (this) {
+              wait(sleep);
+            }
+          } catch (InterruptedException e) {
+            log.info("Interrupted while paused");
+          }
+          continue;
+        }
+
         Task task;
         queue = taskQueueFactory.getTaskQueue();
 
@@ -132,7 +145,8 @@ public class TaskDispatcher implements Runnable {
           // Must restart cycle
           continue;
         } else {
-          log.debug("Task returned by claim {}", task.getUrn());
+          log.debug("Dispatcher {} Claimed Task {} {}", getIdentity(),
+              task.getUrn(), task.getPath());
         }
         // return the task queue while the worker is at it...
         taskQueueFactory.returnTaskQueue(queue);
@@ -148,6 +162,8 @@ public class TaskDispatcher implements Runnable {
             taskSet.add(worker);
           }
         }
+        log.info("TaskDispatcher {} Claimed Task {} {} Listeners {}", getIdentity(), task.getUrn(),
+            task.getPath(), taskSet.size());
 
         boolean ok = true;
         try {
@@ -169,7 +185,7 @@ public class TaskDispatcher implements Runnable {
         // restore the task queue
         queue = taskQueueFactory.getTaskQueue();
         if (run && ok && successful(taskSet, task)) {
-          log.debug("TaskDispatcher {} Task Set Successful. De-queueing Task {}",
+          log.info("TaskDispatcher {} Task Set Successful. De-queueing Task {}",
               task.getPath(), task.getUrn());
           try {
             queue.remove(task);
@@ -187,7 +203,7 @@ public class TaskDispatcher implements Runnable {
           ok = false;
         }
         if (!ok) {
-          log.debug("TaskDispatcher Task Set Failed.");
+          log.info("TaskDispatcher Task Set Failed.");
           cancelTasks(taskSet);
           try {
             queue.release(task);
@@ -398,6 +414,11 @@ public class TaskDispatcher implements Runnable {
     }
 
     private TaskDispatcher dispatcher;
+
+    public Builder setFlags(Flags flags) {
+      dispatcher.flags = flags;
+      return this;
+    }
 
     /**
      * Set the size of the fixed worker pool. Recommend at least two.

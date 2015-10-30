@@ -19,7 +19,7 @@ import static org.joda.time.DateTime.now;
  *
  * @author damien@sitemorph.net
  */
-public class NaieveTaskPicker implements TaskPicker {
+public class NaiveTaskPicker implements TaskPicker {
 
   private Logger log = LoggerFactory.getLogger(getClass());
 
@@ -42,6 +42,7 @@ public class NaieveTaskPicker implements TaskPicker {
           }
         } else {
           claim = candidate;
+          break;
         }
       }
       tasks.close();

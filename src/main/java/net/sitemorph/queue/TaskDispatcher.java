@@ -1,10 +1,9 @@
 package net.sitemorph.queue;
 
+import com.google.common.collect.Lists;
 import net.sitemorph.protostore.CrudException;
 import net.sitemorph.protostore.CrudIterator;
 import net.sitemorph.queue.Message.Task;
-
-import com.google.common.collect.Lists;
 import org.joda.time.Interval;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -271,6 +270,47 @@ public class TaskDispatcher implements Runnable {
     TaskQueue queue = taskQueueFactory.getTaskQueue();
     queue.remove(task);
     taskQueueFactory.returnTaskQueue(queue);
+  }
+
+  /**
+   * Deschedule scheduled task from the queue by given task path
+   *
+   * @param path a path of the task to be de scheduled
+   * @throws QueueException
+   */
+  public void deschedule(String path) throws QueueException {
+    log.info("de scheduling task " + path);
+    // run over the task queue and ensure that there is a task for this event
+    // scheduled
+    TaskQueue queue = null;
+    Task task = null;
+    try {
+      queue = taskQueueFactory.getTaskQueue();
+
+      CrudIterator<Task> tasks = queue.tasks();
+      while (tasks.hasNext()) {
+        Task found = tasks.next();
+        if (found.getPath().equals(path)) {
+          task = found;
+          break;
+        }
+      }
+      tasks.close();
+
+      // scheduled
+      if (task != null) {
+        queue.remove(task);
+      }
+      taskQueueFactory.returnTaskQueue(queue);
+    } catch (QueueException e) {
+      taskQueueFactory.returnTaskQueue(queue);
+      log.error("Error to deschedule scheduled task.", e);
+      throw e;
+    } catch (CrudException e) {
+      taskQueueFactory.returnTaskQueue(queue);
+      log.error("Crud exception trying to look for schedule tasks", e);
+      throw new QueueException("Storage error checking for task scheduled status", e);
+    }
   }
 
   public boolean isTaskScheduled(String path)
